@@ -12,6 +12,9 @@ datasets (use "movielens_preprocess.py"), and then you can run this example.
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from os.path import join
+from datetime import datetime
+
 from striatum.storage import history
 from striatum.storage import model
 from striatum.bandit import ucb1
@@ -19,18 +22,18 @@ from striatum.bandit import linucb
 from striatum.bandit import linthompsamp
 from striatum.bandit import exp4p
 from striatum.bandit import exp3
-from striatum.bandit.bandit import Action
+from striatum.storage.action import Action
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
-
+from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
 
 def get_data():
-    streaming_batch = pd.read_csv('streaming_batch.csv', sep='\t', names=['user_id'], engine='c')
-    user_feature = pd.read_csv('user_feature.csv', sep='\t', header=0, index_col=0, engine='c')
-    actions_id = list(pd.read_csv('actions.csv', sep='\t', header=0, engine='c')['movie_id'])
-    reward_list = pd.read_csv('reward_list.csv', sep='\t', header=0, engine='c')
-    action_context = pd.read_csv('action_context.csv', sep='\t', header=0, engine='c')
+    streaming_batch = pd.read_csv(join(PROCESSED_DATA_DIR, 'streaming_batch.csv'), sep='\t', names=['user_id'], engine='c')
+    user_feature = pd.read_csv(join(PROCESSED_DATA_DIR, 'user_feature.csv'), sep='\t', header=0, index_col=0, engine='c')
+    actions_id = list(pd.read_csv(join(PROCESSED_DATA_DIR, 'actions.csv'), sep='\t', header=0, engine='c')['movie_id'])
+    reward_list = pd.read_csv(join(PROCESSED_DATA_DIR, 'reward_list.csv'), sep='\t', header=0, engine='c')
+    action_context = pd.read_csv(join(PROCESSED_DATA_DIR, 'action_context.csv'), sep='\t', header=0, engine='c')
 
     actions = []
     for key in actions_id:
@@ -42,8 +45,8 @@ def get_data():
 def train_expert(action_context):
     logreg = OneVsRestClassifier(LogisticRegression())
     mnb = OneVsRestClassifier(MultinomialNB(), )
-    logreg.fit(action_context.iloc[:, 2:], action_context.iloc[:, 1])
-    mnb.fit(action_context.iloc[:, 2:], action_context.iloc[:, 1])
+    logreg.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    mnb.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
     return [logreg, mnb]
 
 
@@ -64,7 +67,7 @@ def policy_generation(bandit, actions):
     modelstorage = model.MemoryModelStorage()
 
     if bandit == 'Exp4P':
-        policy = exp4p.Exp4P(actions, historystorage, modelstorage, delta=0.5, pmin=None)
+        policy = exp4p.Exp4P(actions, historystorage, modelstorage, delta=0.5, p_min=None)
 
     elif bandit == 'LinUCB':
         policy = linucb.LinUCB(actions, historystorage, modelstorage, 0.3, 20)
@@ -111,8 +114,10 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                     seq_error[t] = seq_error[t - 1]
 
     elif bandit == 'Exp4P':
-        for t in range(times):
-            feature = user_feature[user_feature.index == streaming_batch.iloc[t, 0]]
+        for t in range(1, times + 1):
+            feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
+            if not len(feature):
+                print(f'No feature for user {int(streaming_batch.iloc[t, 0])}')
             experts = train_expert(action_context)
             advice = {}
             for i in range(len(experts)):
@@ -121,19 +126,23 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 for j in range(len(prob)):
                     advice[i][actions_id[j]] = prob[j]
             history_id, action = policy.get_action(advice)
-            watched_list = reward_list[reward_list['user_id'] == streaming_batch.iloc[t, 0]]
+            watched_list = reward_list[reward_list['user_id'] == int(streaming_batch.iloc[t, 0])]
+            if len(watched_list) == 0:
+                print(f'No watched list for user {int(streaming_batch.iloc[t, 0])}')
 
             if action[0]['action'].action_id not in list(watched_list['movie_id']):
                 policy.reward(history_id, {action[0]['action'].action_id: 0.0})
-                if t == 0:
+                if t == 1:
                     seq_error[t] = 1.0
                 else:
                     seq_error[t] = seq_error[t - 1] + 1.0
 
             else:
                 policy.reward(history_id, {action[0]['action'].action_id: 1.0})
-                if t > 0:
+                if t > 1:
                     seq_error[t] = seq_error[t - 1]
+            
+            print(f'regret={seq_error[t] / (1.0 * times)} | t={t}/{times}')
 
     elif bandit == 'random':
         for t in range(times):
@@ -164,7 +173,8 @@ def main():
     streaming_batch_small = streaming_batch.iloc[0:10000]
 
     # conduct regret analyses
-    experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
+    #experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
+    experiment_bandit = ['Exp4P']
     regret = {}
     col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     i = 0
@@ -181,7 +191,13 @@ def main():
         axes.set_ylim([0, 1])
         plt.title("Regret Bound with respect to T")
         i += 1
-    plt.show()
+    #plt.show()
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    figure_name = 'movielens'
+    filename = f"plots/{figure_name}_{timestamp}.png"
+    plt.savefig(filename)
+    plt.close()  # Close the figure context
+    print(f"Saved plot as {filename}")
 
 
 if __name__ == '__main__':

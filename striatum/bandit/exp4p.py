@@ -47,8 +47,11 @@ class Exp4P(BaseBandit):
         super(Exp4P, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
         # number of actions (i.e. K in the paper)
-        self.n_actions = len(self._actions)
+        self.n_actions = len(self._action_storage)
         self.max_rounds = max_rounds
+        self._modelstorage = self._model_storage
+        self._historystorage = self._history_storage
+        self.action_ids = [action.id for action in self._action_storage]
 
         # delta > 0
         if not isinstance(delta, float):
@@ -150,7 +153,7 @@ class Exp4P(BaseBandit):
 
         self.n_total += 1
         history_id = self._historystorage.add_history(
-            context, action_recommendation, reward=None)
+        context, action_recommendation, rewards=None)
         return history_id, action_recommendation
 
     def reward(self, history_id, rewards):

@@ -1,6 +1,7 @@
 from six.moves import range
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 from .utils import get_random_state
 
@@ -47,10 +48,7 @@ def simulate_data(n_rounds, context_dimension, action_storage, algorithm=None,
             context[t] = random_state.uniform(0, 1, context_dimension)
             context_sum = context[t].sum()
             for action_i, action_id in enumerate(action_ids):
-                if (action_i * context_dimension / action_storage.count()
-                        < context_sum
-                        <= ((action_i + 1) * context_dimension
-                            / action_storage.count())):
+                if (action_i * context_dimension / action_storage.count() < context_sum <= ((action_i + 1) * context_dimension / action_storage.count())):
                     desired_actions[t] = action_id
 
     else:
@@ -89,7 +87,9 @@ def evaluate_policy(policy, context, desired_actions):
     cum_regret = np.empty(shape=n_rounds)
     for t in range(n_rounds):
         history_id, recommendation = policy.get_action(context[t])
-        action_id = recommendation.action.id
+        if len(recommendation) != 1:
+            print(f'alert: {recommendation=}')
+        action_id = recommendation[0]['action'].id
         if desired_actions[t] != action_id:
             policy.reward(history_id, {action_id: 0})
             if t == 0:
@@ -127,4 +127,9 @@ def plot_tuning_curve(tuning_region, ctr_tuning, label):
     axes = plt.gca()
     axes.set_ylim([0, 1])
     plt.title("Parameter Tunning Curve")
-    plt.show()
+    #plt.show()
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"plots/tuning_curve_{timestamp}.png"
+    plt.savefig(filename)
+    plt.close()  # Close the figure context
+    print(f"Saved plot as {filename}")

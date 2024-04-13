@@ -20,7 +20,9 @@ class Action(object):
         self.id = action_id
         self.type = action_type
         self.text = action_text
-
+    @property
+    def action_id(self):
+        return self.id
 
 class ActionStorage(object):
     """The object to store the actions."""
