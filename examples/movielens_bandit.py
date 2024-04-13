@@ -9,6 +9,9 @@ MovieLens 10M Dataset, which is released by GroupLens at 1/2009. Please fist pre
 datasets (use "movielens_preprocess.py"), and then you can run this example.
 """
 
+import random
+import torch
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,6 +30,24 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
+
+def set_seed(seed):
+    # Set seed for Python's built-in random module
+    random.seed(seed)
+
+    # Set seed for NumPy
+    np.random.seed(seed)
+
+    # Set seed for PyTorch
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # For multi-GPU setups
+
+    # Ensure that PyTorch uses deterministic algorithms where possible
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 def get_data():
     streaming_batch = pd.read_csv(join(PROCESSED_DATA_DIR, 'streaming_batch.csv'), sep='\t', names=['user_id'], engine='c')
@@ -201,4 +222,5 @@ def main():
 
 
 if __name__ == '__main__':
+    set_seed(42)
     main()

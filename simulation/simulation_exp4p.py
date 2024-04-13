@@ -5,12 +5,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 from striatum.storage import MemoryHistoryStorage, MemoryModelStorage
 from striatum.bandit import Exp4P
-from striatum.bandit.bandit import Action
+from striatum.storage import Action, MemoryActionStorage
 from striatum import simulation
-
 
 def train_expert(history_context, history_action):
     n_round = len(history_context)
@@ -39,10 +39,12 @@ def main():  # pylint: disable=too-many-locals
     n_rounds = 1000
     context_dimension = 5
     actions = [Action(i) for i in range(5)]
+    action_storage = MemoryActionStorage()
+    action_storage.add(actions)
 
     action_ids = [0, 1, 2, 3, 4]
     context1, desired_actions1 = simulation.simulate_data(
-        3000, context_dimension, actions, "Exp4P", random_state=0)
+        3000, context_dimension, action_storage, "Exp4P", random_state=0)
     experts = train_expert(context1, desired_actions1)
 
     # Parameter tuning
@@ -66,7 +68,7 @@ def main():  # pylint: disable=too-many-locals
     # Regret Analysis
     n_rounds = 10000
     context2, desired_actions2 = simulation.simulate_data(
-        n_rounds, context_dimension, actions, "Exp4P", random_state=1)
+        n_rounds, context_dimension, action_storage, "Exp4P", random_state=1)
     advice2 = get_advice(context2, action_ids, experts)
     historystorage = MemoryHistoryStorage()
     modelstorage = MemoryModelStorage()
@@ -82,7 +84,12 @@ def main():  # pylint: disable=too-many-locals
             policy.reward(history_id, {action_id: 1})
 
     policy.plot_avg_regret()
-    plt.show()
+    #plt.show()
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"plots/regret_{timestamp}.png"
+    plt.savefig(filename)
+    plt.close()  # Close the figure context
+    print(f"Saved plot as {filename}")
 
 
 if __name__ == '__main__':

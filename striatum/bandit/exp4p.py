@@ -47,11 +47,8 @@ class Exp4P(BaseBandit):
         super(Exp4P, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
         # number of actions (i.e. K in the paper)
-        self.n_actions = len(self._action_storage)
+        self.n_actions = self._action_storage.count()
         self.max_rounds = max_rounds
-        self._modelstorage = self._model_storage
-        self._historystorage = self._history_storage
-        self.action_ids = [action.id for action in self._action_storage]
 
         # delta > 0
         if not isinstance(delta, float):
@@ -79,14 +76,14 @@ class Exp4P(BaseBandit):
             # weight vector for each expert
             'w': {},
         }
-        self._modelstorage.save_model(model)
+        self._model_storage.save_model(model)
 
     def _exp4p_score(self, context):
         """The main part of Exp4.P.
         """
         advisor_ids = list(six.viewkeys(context))
 
-        w = self._modelstorage.get_model()['w']
+        w = self._model_storage.get_model()['w']
         if len(w) == 0:
             for i in advisor_ids:
                 w[i] = 1
@@ -110,7 +107,7 @@ class Exp4P(BaseBandit):
             estimated_reward[action_id] = action_prob
             uncertainty[action_id] = 0
             score[action_id] = action_prob
-        self._modelstorage.save_model(
+        self._model_storage.save_model(
             {'action_probs': estimated_reward, 'w': w})
 
         return estimated_reward, uncertainty, score
@@ -152,7 +149,7 @@ class Exp4P(BaseBandit):
             })
 
         self.n_total += 1
-        history_id = self._historystorage.add_history(
+        history_id = self._history_storage.add_history(
         context, action_recommendation, rewards=None)
         return history_id, action_recommendation
 
@@ -167,11 +164,11 @@ class Exp4P(BaseBandit):
         rewards : dictionary
             The dictionary {action_id, reward}, where reward is a float.
         """
-        context = (self._historystorage
+        context = (self._history_storage
                    .get_unrewarded_history(history_id)
                    .context)
 
-        model = self._modelstorage.get_model()
+        model = self._model_storage.get_model()
         w = model['w']
         action_probs = model['action_probs']
         action_ids = list(six.viewkeys(six.next(six.itervalues(context))))
@@ -191,8 +188,8 @@ class Exp4P(BaseBandit):
                        * np.sqrt(np.log(len(context) / self.delta)
                                  / (len(action_ids) * self.max_rounds))))
 
-        self._modelstorage.save_model({
+        self._model_storage.save_model({
             'action_probs': action_probs, 'w': w})
 
         # Update the history
-        self._historystorage.add_reward(history_id, rewards)
+        self._history_storage.add_reward(history_id, rewards)

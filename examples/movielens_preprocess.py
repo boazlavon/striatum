@@ -15,7 +15,7 @@ import itertools
 
 from os.path import join
 
-DATASET_NAME = 'ml-10m'
+DATASET_NAME = 'ml-1m'
 DATA_DIR = join('data', DATASET_NAME)
 RAW_DATA_DIR = join(DATA_DIR, 'raw')
 PROCESSED_DATA_DIR = join(DATA_DIR, 'processed')
