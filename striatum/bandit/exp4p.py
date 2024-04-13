@@ -48,6 +48,7 @@ class Exp4P(BaseBandit):
         self.n_total = 0
         # number of actions (i.e. K in the paper)
         self.n_actions = self._action_storage.count()
+        self.action_ids = list(self._action_storage.iterids())
         self.max_rounds = max_rounds
 
         # delta > 0

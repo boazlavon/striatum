@@ -25,7 +25,7 @@ from striatum.bandit import linucb
 from striatum.bandit import linthompsamp
 from striatum.bandit import exp4p
 from striatum.bandit import exp3
-from striatum.storage.action import Action
+from striatum.storage.action import Action, MemoryActionStorage
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
@@ -88,7 +88,9 @@ def policy_generation(bandit, actions):
     modelstorage = model.MemoryModelStorage()
 
     if bandit == 'Exp4P':
-        policy = exp4p.Exp4P(actions, historystorage, modelstorage, delta=0.5, p_min=None)
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp4p.Exp4P(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None)
 
     elif bandit == 'LinUCB':
         policy = linucb.LinUCB(actions, historystorage, modelstorage, 0.3, 20)
