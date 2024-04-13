@@ -135,7 +135,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                     seq_error[t] = seq_error[t - 1]
 
     elif bandit == 'Exp4P':
-        for t in range(1, times + 1):
+        for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             if not len(feature):
                 print(f'No feature for user {int(streaming_batch.iloc[t, 0])}')
