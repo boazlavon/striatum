@@ -165,7 +165,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 if t > 1:
                     seq_error[t] = seq_error[t - 1]
             
-            print(f'regret={seq_error[t] / (1.0 * times)} | t={t}/{times}')
+            print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
 
     elif bandit == 'random':
         for t in range(times):
