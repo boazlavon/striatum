@@ -43,8 +43,7 @@ class Exp4P(BaseBandit):
             Artificial Intelligence and Statistics (AISTATS). 2011u.
     """
 
-    def __init__(self, actions, historystorage, modelstorage, delta=0.1,
-                 p_min=None, max_rounds=10000):
+    def __init__(self, actions, historystorage, modelstorage, delta=0.1, p_min=None, max_rounds=10000):
         super(Exp4P, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
         # number of actions (i.e. K in the paper)
@@ -55,19 +54,16 @@ class Exp4P(BaseBandit):
 
         # delta > 0
         if not isinstance(delta, float):
-            raise ValueError("delta should be float, the one"
-                             "given is: %f" % p_min)
+            raise ValueError("delta should be float, the one" "given is: %f" % p_min)
         self.delta = delta
 
         # p_min in [0, 1/k]
         if p_min is None:
             self.p_min = np.sqrt(np.log(10) / self.n_actions / self.max_rounds)
         elif not isinstance(p_min, float):
-            raise ValueError("p_min should be float, the one"
-                             "given is: %f" % p_min)
-        elif (p_min < 0) or (p_min > (1. / self.n_actions)):
-            raise ValueError("p_min should be in [0, 1/k], the one"
-                             "given is: %f" % p_min)
+            raise ValueError("p_min should be float, the one" "given is: %f" % p_min)
+        elif (p_min < 0) or (p_min > (1.0 / self.n_actions)):
+            raise ValueError("p_min should be in [0, 1/k], the one" "given is: %f" % p_min)
         else:
             self.p_min = p_min
 
@@ -75,9 +71,9 @@ class Exp4P(BaseBandit):
 
         model = {
             # probability distribution for action recommendation
-            'action_probs': None,
+            "action_probs": None,
             # weight vector for each expert
-            'w': None,
+            "w": None,
         }
         self._model_storage.save_model(model)
 
@@ -86,9 +82,9 @@ class Exp4P(BaseBandit):
         advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long)
         n_advisors = len(advisor_ids)
         n_actions = len(self.action_ids)
-        
+
         # Get or initialize weights
-        w = self._model_storage.get_model().get('w', torch.ones(n_advisors))
+        w = self._model_storage.get_model().get("w", torch.ones(n_advisors))
         if w is None:
             w = torch.ones(n_advisors)
 
@@ -98,7 +94,7 @@ class Exp4P(BaseBandit):
         for advisor_idx, actions in context.items():
             for action, value in actions.items():
                 context_matrix[advisor_idx, action_index[action]] = value
-        
+
         # Calculate weighted probabilities for actions
         w_sum = torch.sum(w)
         weighted_sums = torch.matmul(w, context_matrix)
@@ -116,8 +112,7 @@ class Exp4P(BaseBandit):
             estimated_reward[action_id] = action_prob
             uncertainty[action_id] = 0
             score[action_id] = action_prob
-        self._model_storage.save_model(
-            {'action_probs': action_probs, 'w': w})
+        self._model_storage.save_model({"action_probs": action_probs, "w": w})
 
         return estimated_reward, uncertainty, score
 
@@ -145,21 +140,21 @@ class Exp4P(BaseBandit):
         estimated_reward, uncertainty, score = self._exp4p_score(context)
 
         action_recommendation = []
-        action_recommendation_ids = sorted(score, key=score.get,
-                                           reverse=True)[:n_actions]
+        action_recommendation_ids = sorted(score, key=score.get, reverse=True)[:n_actions]
 
         for action_id in action_recommendation_ids:
             action = self.get_action_with_id(action_id)
-            action_recommendation.append({
-                'action': action,
-                'estimated_reward': estimated_reward[action_id],
-                'uncertainty': uncertainty[action_id],
-                'score': score[action_id],
-            })
+            action_recommendation.append(
+                {
+                    "action": action,
+                    "estimated_reward": estimated_reward[action_id],
+                    "uncertainty": uncertainty[action_id],
+                    "score": score[action_id],
+                }
+            )
 
         self.n_total += 1
-        history_id = self._history_storage.add_history(
-        context, action_recommendation, rewards=None)
+        history_id = self._history_storage.add_history(context, action_recommendation, rewards=None)
         return history_id, action_recommendation
 
     def reward(self, history_id, rewards):
@@ -177,8 +172,8 @@ class Exp4P(BaseBandit):
         # Retrieve the context for the given history_id
         context = self._history_storage.get_unrewarded_history(history_id).context
         model = self._model_storage.get_model()
-        w = model['w']
-        action_probs = model['action_probs']
+        w = model["w"]
+        action_probs = model["action_probs"]
 
         # Prepare arrays from the context and rewards
         n_actions = len(self.action_ids)
@@ -190,17 +185,26 @@ class Exp4P(BaseBandit):
         for advisor_idx, actions in context.items():
             for action, value in actions.items():
                 context_matrix[advisor_idx, action_index[action]] = value
-        
+
         # Calculate y_hat and v_hat using vectorized operations
         n_advisors = torch.tensor(n_advisors, dtype=torch.float)
         for action_id, reward in six.viewitems(rewards):
-            y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs[action_index[action_id]]
+            y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs[
+                action_index[action_id]
+            ]
             v_hat = torch.sum(context_matrix / action_probs, dim=1)
             print(f"{y_hat=}")
             print(f"{v_hat=}")
 
             # Update weights
-            updates = self.p_min / 2 * (y_hat + v_hat * torch.sqrt(torch.log(n_advisors / self.delta) / (n_actions * self.max_rounds)))
+            updates = (
+                self.p_min
+                / 2
+                * (
+                    y_hat
+                    + v_hat * torch.sqrt(torch.log(n_advisors / self.delta) / (n_actions * self.max_rounds))
+                )
+            )
             print(f"{updates=}")
             updates = torch.exp(updates)
             print(f"{updates=}")
