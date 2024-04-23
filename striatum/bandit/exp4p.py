@@ -178,7 +178,7 @@ class Exp4P(BaseBandit):
         context = self._history_storage.get_unrewarded_history(history_id).context
         model = self._model_storage.get_model()
         w = model['w']
-        action_probs_arr = model['action_probs']
+        action_probs = model['action_probs']
 
         # Prepare arrays from the context and rewards
         n_actions = len(self.action_ids)
@@ -194,8 +194,8 @@ class Exp4P(BaseBandit):
         # Calculate y_hat and v_hat using vectorized operations
         n_advisors = torch.tensor(n_advisors, dtype=torch.float)
         for action_id, reward in six.viewitems(rewards):
-            y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs_arr[action_index[action_id]]
-            v_hat = torch.sum(context_matrix / action_probs_arr, dim=1)
+            y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs[action_index[action_id]]
+            v_hat = torch.sum(context_matrix / action_probs, dim=1)
             print(f"{y_hat=}")
             print(f"{v_hat=}")
 
@@ -207,7 +207,7 @@ class Exp4P(BaseBandit):
             w *= updates
 
         # self._history_storage.add_reward(history_id, rewards)
-        self._model_storage.save_model({'action_probs': action_probs_arr, 'w': w})
+        self._model_storage.save_model({"action_probs": action_probs, "w": w})
 
         # Update the history
         self._history_storage.add_reward(history_id, rewards)
