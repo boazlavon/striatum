@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-torch.autograd.set_detect_anomaly(True)
+
 
 from striatum.bandit.bandit import BaseBandit
 
@@ -20,27 +20,19 @@ LOGGER = logging.getLogger(__name__)
 
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size1, hidden_size2, output_size, dropout_prob=0.5):
+    def __init__(self, layers_dims, dropout_prob=0.5):
         super(NeuralNetwork, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size1)
-        self.dropout1 = nn.Dropout(dropout_prob)
-        self.fc2 = nn.Linear(hidden_size1, hidden_size2)
-        self.dropout2 = nn.Dropout(dropout_prob)
-        self.fc3 = nn.Linear(hidden_size2, hidden_size2)
-        self.dropout3 = nn.Dropout(dropout_prob)
-        self.fc4 = nn.Linear(hidden_size2, output_size)
-        self.softmax = nn.Softmax(dim=1)
+        self.layers = nn.ModuleList()  # Use ModuleList to properly register the layers
+        for idx, (in_layer_size, out_layer_size) in enumerate(zip(layers_dims[:-1], layers_dims[1:])):
+            self.layers.append(nn.Linear(in_layer_size, out_layer_size))
+            if idx < len(layers_dims) - 2:
+                self.layers.append(nn.Dropout(dropout_prob))
+                self.layers.append(nn.ReLU())
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.dropout1(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout2(x)
-        x = F.relu(self.fc3(x))
-        x = self.dropout3(x)
-        import ipdb; ipdb.set_trace()
-        x = self.fc4(x)
-        x = self.softmax(x)
+        for layer in self.layers:
+            x = layer(x)
+        x = F.softmax(x, dim=0)
         return x
 
 
@@ -81,10 +73,10 @@ class Exp4P(BaseBandit):
         delta=0.1,
         p_min=None,
         max_rounds=10000,
-        gamma=0.1,
         hidden_size1=64,
         hidden_size2=128,
         dropout_prob=0.5,
+        lr=1e-3
     ):
         super(Exp4P, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
@@ -97,9 +89,9 @@ class Exp4P(BaseBandit):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(self.device)
         self.model = NeuralNetwork(
-            self.num_advisors, hidden_size1, hidden_size2, self.num_advisors, dropout_prob
+            [self.num_advisors, hidden_size1, hidden_size2, self.num_advisors], dropout_prob
         ).to(self.device)
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr)
 
         # delta > 0
         if not isinstance(delta, float):
@@ -126,17 +118,11 @@ class Exp4P(BaseBandit):
         }
         self._model_storage.save_model(model)
 
-    def _exp4p_score(self, context):
+    def _calculate_action_probs(self, context, w):
         # Convert context to a structured numpy array for vectorized operations
         advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long)
         n_advisors = len(advisor_ids)
         n_actions = len(self.action_ids)
-
-        # Get or initialize weights
-        w = self._model_storage.get_model().get("w", torch.ones(n_advisors))
-        if w is None:
-            w = torch.ones(n_advisors)
-        w.requires_grad_(True)
 
         # Fill the context matrix and reward vector
         context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float)
@@ -151,8 +137,19 @@ class Exp4P(BaseBandit):
         action_probs = (1 - self.n_actions * self.p_min) * (weighted_sums / w_sum) + self.p_min
         action_probs /= torch.sum(action_probs)
 
-        print(f"{action_probs=}")
-        print(f"{w=}")
+        return action_probs
+
+    def _exp4p_score(self, context):
+        # Convert context to a structured numpy array for vectorized operations
+        advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long)
+        n_advisors = len(advisor_ids)
+
+        # Get or initialize weights
+        w = self._model_storage.get_model().get("w", torch.ones(n_advisors))
+        if w is None:
+            w = torch.ones(n_advisors)
+
+        action_probs = self._calculate_action_probs(context, w)
 
         # Prepare to save and return the results
         estimated_reward = {}
@@ -218,7 +215,7 @@ class Exp4P(BaseBandit):
         rewards : dictionary
             The dictionary {action_id, reward}, where reward is a float.
         """
-        print(rewards)
+        # print(rewards)
         # Retrieve the context for the given history_id
         context = self._history_storage.get_unrewarded_history(history_id).context
         model = self._model_storage.get_model()
@@ -243,8 +240,6 @@ class Exp4P(BaseBandit):
                 action_index[action_id]
             ]
             v_hat = torch.sum(context_matrix / action_probs, dim=1)
-            print(f"{y_hat=}")
-            print(f"{v_hat=}")
 
             # Update weights
             updates = (
@@ -255,27 +250,18 @@ class Exp4P(BaseBandit):
                     + v_hat * torch.sqrt(torch.log(n_advisors / self.delta) / (n_actions * self.max_rounds))
                 )
             )
-            print(f"{updates=}")
-            updates = self.model(updates)
-            print(f"{updates=}")
-            updates = torch.exp(updates)
-            print(f"{updates=}")
-            print()
-            w = w * updates
-
-            p = action_probs[action_index[action_id]]
-
-            loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
-            try:
-                loss.backward(retain_graph=True)
-                self.optimizer.step()
-            except Exception as e:
-                print(e)
-                print()
-                import ipdb; ipdb.set_trace()
             self.optimizer.zero_grad()
-            w.detach()
-            action_probs.detach()
+            updates = self.model(updates)
+            w = w * updates
+            w = w / torch.sum(w)
+            grad_action_probs = self._calculate_action_probs(context, w)
+            p = grad_action_probs[action_index[action_id]]
+            loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
+            print(f"{w=}")
+            print(f"{loss=}")
+            loss.backward()
+            self.optimizer.step()
+            w = w.detach()
 
         # self._history_storage.add_reward(history_id, rewards)
         self._model_storage.save_model({"action_probs": action_probs, "w": w})
