@@ -11,6 +11,7 @@ datasets (use "movielens_preprocess.py"), and then you can run this example.
 
 import random
 import torch
+import json
 
 import pandas as pd
 import numpy as np
@@ -87,16 +88,16 @@ def get_advice(context, actions_id, experts):
 def policy_generation(bandit, actions):
     historystorage = history.MemoryHistoryStorage()
     modelstorage = model.MemoryModelStorage()
-
+    max_rounds = 10000
     if bandit == 'Exp4P':
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
-        policy = exp4p.Exp4P(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None)
+        policy = exp4p.Exp4P(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds)
 
     if bandit == 'Exp4PNN':
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
-        policy = exp4pnn.Exp4PNN(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None)
+        policy = exp4pnn.Exp4PNN(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds)
 
     elif bandit == 'LinUCB':
         policy = linucb.LinUCB(actions, historystorage, modelstorage, 0.3, 20)
@@ -109,7 +110,9 @@ def policy_generation(bandit, actions):
         policy = ucb1.UCB1(actions, historystorage, modelstorage)
 
     elif bandit == 'Exp3':
-        policy = exp3.Exp3(actions, historystorage, modelstorage, gamma=0.2)
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp3.Exp3(historystorage, modelstorage, actions_storage, gamma=0.2)
 
     elif bandit == 'random':
         policy = 0
@@ -121,26 +124,28 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
     times = len(streaming_batch)
     seq_error = np.zeros(shape=(times, 1))
     actions_id = [actions[i].action_id for i in range(len(actions))]
+    print()
     if bandit in ['LinUCB', 'LinThompSamp', 'UCB1', 'Exp3']:
-        for t in range(times):
-            feature = np.array(user_feature[user_feature.index == streaming_batch.iloc[t, 0]])[0]
+        for t in range(1, times):
+            feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             full_context = {}
             for action_id in actions_id:
                 full_context[action_id] = feature
             history_id, action = policy.get_action(full_context, 1)
-            watched_list = reward_list[reward_list['user_id'] == streaming_batch.iloc[t, 0]]
+            watched_list = reward_list[reward_list['user_id'] == int(streaming_batch.iloc[t, 0])]
 
-            if action[0]['action'].action_id not in list(watched_list['movie_id']):
-                policy.reward(history_id, {action[0]['action'].action_id: 0.0})
-                if t == 0:
+            if action[0].action.action_id not in list(watched_list['movie_id']):
+                policy.reward(history_id, {action[0].action.action_id: 0.0})
+                if t == 1:
                     seq_error[t] = 1.0
                 else:
                     seq_error[t] = seq_error[t - 1] + 1.0
 
             else:
-                policy.reward(history_id, {action[0]['action'].action_id: 1.0})
+                policy.reward(history_id, {action[0].action.action_id: 1.0})
                 if t > 0:
                     seq_error[t] = seq_error[t - 1]
+            print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
 
     elif bandit == 'Exp4P' or bandit == 'Exp4PNN':
         for t in range(1, times):
@@ -170,7 +175,6 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 policy.reward(history_id, {action[0]['action'].action_id: 1.0})
                 if t > 1:
                     seq_error[t] = seq_error[t - 1]
-            
             print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
 
     elif bandit == 'random':
@@ -203,8 +207,7 @@ def main():
 
     # conduct regret analyses
     #experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
-    #experiment_bandit = ['Exp4P']
-    experiment_bandit = ['Exp4PNN']
+    experiment_bandit = ['Exp3', 'Exp4PNN', 'Exp4P']
     regret = {}
     col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     i = 0
@@ -213,10 +216,10 @@ def main():
         seq_error = policy_evaluation(policy, bandit, streaming_batch_small, user_feature, reward_list,
                                       actions, action_context)
         regret[bandit] = regret_calculation(seq_error)
-        plt.plot(range(len(streaming_batch_small)), regret[bandit], c=col[i], ls='-', label=bandit)
+        plt.plot(range(len(regret[bandit])), regret[bandit], c=col[i], ls='-', label=bandit)
         plt.xlabel('time')
         plt.ylabel('regret')
-        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+        plt.legend()
         axes = plt.gca()
         axes.set_ylim([0, 1])
         plt.title("Regret Bound with respect to T")
@@ -228,6 +231,13 @@ def main():
     plt.savefig(filename)
     plt.close()  # Close the figure context
     print(f"Saved plot as {filename}")
+
+    json_regret = { bandit : [val[0] for val in values] for bandit, values in regret.items() }
+    print(json_regret)
+    regret_json_filename = f"plots/{figure_name}_{timestamp}_regret.json"
+    with open(regret_json_filename, 'w') as f:
+        json.dump(json_regret, f, indent=4)
+    print(f"Saved regret data as {regret_json_filename}")
 
 
 if __name__ == '__main__':

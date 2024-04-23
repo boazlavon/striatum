@@ -41,7 +41,7 @@ class History(object):
 
         for rec in recommendations:
             try:
-                rec['reward'] = rewards[rec['action'].id]
+                rec.reward = rewards[rec.action.id]
             except KeyError:
                 pass
         self.rewarded_at = rewarded_at
