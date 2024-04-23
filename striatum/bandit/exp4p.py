@@ -8,6 +8,7 @@ import logging
 import six
 from six.moves import zip
 import numpy as np
+import torch
 
 from striatum.bandit.bandit import BaseBandit
 
@@ -82,26 +83,27 @@ class Exp4P(BaseBandit):
 
     def _exp4p_score(self, context):
         # Convert context to a structured numpy array for vectorized operations
-        advisor_ids = np.array(list(context.keys()))
+        advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long)
         n_advisors = len(advisor_ids)
         n_actions = len(self.action_ids)
         
         # Get or initialize weights
-        w = self._model_storage.get_model().get('w', np.ones(n_advisors))
+        w = self._model_storage.get_model().get('w', torch.ones(n_advisors))
         if w is None:
-            w = np.ones(n_advisors)
+            w = torch.ones(n_advisors)
 
         # Fill the context matrix and reward vector
-        context_matrix = np.zeros((n_advisors, n_actions))
+        context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float)
         action_index = {aid: idx for idx, aid in enumerate(self.action_ids)}
         for advisor_idx, actions in context.items():
             for action, value in actions.items():
                 context_matrix[advisor_idx, action_index[action]] = value
         
         # Calculate weighted probabilities for actions
-        w_sum = np.sum(w)
-        action_probs = (1 - self.n_actions * self.p_min) * (np.dot(w, context_matrix) / w_sum) + self.p_min
-        action_probs /= action_probs.sum()
+        w_sum = torch.sum(w)
+        weighted_sums = torch.matmul(w, context_matrix)
+        action_probs = (1 - self.n_actions * self.p_min) * (weighted_sums / w_sum) + self.p_min
+        action_probs /= torch.sum(action_probs)
 
         print(f"{action_probs=}")
         print(f"{w=}")
@@ -110,7 +112,7 @@ class Exp4P(BaseBandit):
         estimated_reward = {}
         uncertainty = {}
         score = {}
-        for action_id, action_prob in zip(self.action_ids, list(action_probs)):
+        for action_id, action_prob in zip(self.action_ids, action_probs.tolist()):
             estimated_reward[action_id] = action_prob
             uncertainty[action_id] = 0
             score[action_id] = action_prob
@@ -179,11 +181,10 @@ class Exp4P(BaseBandit):
         action_probs_arr = model['action_probs']
 
         # Prepare arrays from the context and rewards
-        action_ids = np.array(self.action_ids)
-        n_actions = len(action_ids)
+        n_actions = len(self.action_ids)
         n_advisors = len(context)
-        context_matrix = np.zeros((n_advisors, n_actions))
-        action_index = {aid: idx for idx, aid in enumerate(action_ids)}
+        context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float)
+        action_index = {aid: idx for idx, aid in enumerate(self.action_ids)}
 
         # Fill the context matrix and reward vector
         for advisor_idx, actions in context.items():
@@ -191,16 +192,17 @@ class Exp4P(BaseBandit):
                 context_matrix[advisor_idx, action_index[action]] = value
         
         # Calculate y_hat and v_hat using vectorized operations
+        n_advisors = torch.tensor(n_advisors, dtype=torch.float)
         for action_id, reward in six.viewitems(rewards):
-            y_hat = (context_matrix[:,action_index[action_id]] * reward) / action_probs_arr[action_index[action_id]]
-            v_hat = np.sum(context_matrix / action_probs_arr, axis=1)
+            y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs_arr[action_index[action_id]]
+            v_hat = torch.sum(context_matrix / action_probs_arr, dim=1)
             print(f"{y_hat=}")
             print(f"{v_hat=}")
 
             # Update weights
-            updates = self.p_min / 2 * (y_hat + v_hat * np.sqrt(np.log(n_advisors / self.delta) / (n_actions * self.max_rounds)))
+            updates = self.p_min / 2 * (y_hat + v_hat * torch.sqrt(torch.log(n_advisors / self.delta) / (n_actions * self.max_rounds)))
             print(f"{updates=}")
-            updates = np.exp(updates)
+            updates = torch.exp(updates)
             print(f"{updates=}")
             w *= updates
 
