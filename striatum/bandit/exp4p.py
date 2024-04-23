@@ -9,10 +9,39 @@ import six
 from six.moves import zip
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+torch.autograd.set_detect_anomaly(True)
 
 from striatum.bandit.bandit import BaseBandit
 
 LOGGER = logging.getLogger(__name__)
+
+
+class NeuralNetwork(nn.Module):
+    def __init__(self, input_size, hidden_size1, hidden_size2, output_size, dropout_prob=0.5):
+        super(NeuralNetwork, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size1)
+        self.dropout1 = nn.Dropout(dropout_prob)
+        self.fc2 = nn.Linear(hidden_size1, hidden_size2)
+        self.dropout2 = nn.Dropout(dropout_prob)
+        self.fc3 = nn.Linear(hidden_size2, hidden_size2)
+        self.dropout3 = nn.Dropout(dropout_prob)
+        self.fc4 = nn.Linear(hidden_size2, output_size)
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.dropout1(x)
+        x = F.relu(self.fc2(x))
+        x = self.dropout2(x)
+        x = F.relu(self.fc3(x))
+        x = self.dropout3(x)
+        import ipdb; ipdb.set_trace()
+        x = self.fc4(x)
+        x = self.softmax(x)
+        return x
 
 
 class Exp4P(BaseBandit):
@@ -43,7 +72,20 @@ class Exp4P(BaseBandit):
             Artificial Intelligence and Statistics (AISTATS). 2011u.
     """
 
-    def __init__(self, actions, historystorage, modelstorage, delta=0.1, p_min=None, max_rounds=10000):
+    def __init__(
+        self,
+        actions,
+        historystorage,
+        modelstorage,
+        num_advisors=2,
+        delta=0.1,
+        p_min=None,
+        max_rounds=10000,
+        gamma=0.1,
+        hidden_size1=64,
+        hidden_size2=128,
+        dropout_prob=0.5,
+    ):
         super(Exp4P, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
         # number of actions (i.e. K in the paper)
@@ -51,6 +93,13 @@ class Exp4P(BaseBandit):
         self.action_ids = list(self._action_storage.iterids())
         self.action_ids.sort()
         self.max_rounds = max_rounds
+        self.num_advisors = num_advisors
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(self.device)
+        self.model = NeuralNetwork(
+            self.num_advisors, hidden_size1, hidden_size2, self.num_advisors, dropout_prob
+        ).to(self.device)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
 
         # delta > 0
         if not isinstance(delta, float):
@@ -87,6 +136,7 @@ class Exp4P(BaseBandit):
         w = self._model_storage.get_model().get("w", torch.ones(n_advisors))
         if w is None:
             w = torch.ones(n_advisors)
+        w.requires_grad_(True)
 
         # Fill the context matrix and reward vector
         context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float)
@@ -206,9 +256,26 @@ class Exp4P(BaseBandit):
                 )
             )
             print(f"{updates=}")
+            updates = self.model(updates)
+            print(f"{updates=}")
             updates = torch.exp(updates)
             print(f"{updates=}")
-            w *= updates
+            print()
+            w = w * updates
+
+            p = action_probs[action_index[action_id]]
+
+            loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
+            try:
+                loss.backward(retain_graph=True)
+                self.optimizer.step()
+            except Exception as e:
+                print(e)
+                print()
+                import ipdb; ipdb.set_trace()
+            self.optimizer.zero_grad()
+            w.detach()
+            action_probs.detach()
 
         # self._history_storage.add_reward(history_id, rewards)
         self._model_storage.save_model({"action_probs": action_probs, "w": w})
