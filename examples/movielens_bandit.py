@@ -24,6 +24,7 @@ from striatum.bandit import ucb1
 from striatum.bandit import linucb
 from striatum.bandit import linthompsamp
 from striatum.bandit import exp4p
+from striatum.bandit import exp4pnn
 from striatum.bandit import exp3
 from striatum.storage.action import Action, MemoryActionStorage
 from sklearn.naive_bayes import MultinomialNB
@@ -92,6 +93,11 @@ def policy_generation(bandit, actions):
         actions_storage.add(actions)
         policy = exp4p.Exp4P(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None)
 
+    if bandit == 'Exp4PNN':
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp4pnn.Exp4PNN(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None)
+
     elif bandit == 'LinUCB':
         policy = linucb.LinUCB(actions, historystorage, modelstorage, 0.3, 20)
 
@@ -136,7 +142,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 if t > 0:
                     seq_error[t] = seq_error[t - 1]
 
-    elif bandit == 'Exp4P':
+    elif bandit == 'Exp4P' or bandit == 'Exp4PNN':
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             if not len(feature):
@@ -197,7 +203,8 @@ def main():
 
     # conduct regret analyses
     #experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
-    experiment_bandit = ['Exp4P']
+    #experiment_bandit = ['Exp4P']
+    experiment_bandit = ['Exp4PNN']
     regret = {}
     col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     i = 0
