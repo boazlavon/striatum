@@ -49,6 +49,7 @@ class Exp4P(BaseBandit):
         # number of actions (i.e. K in the paper)
         self.n_actions = self._action_storage.count()
         self.action_ids = list(self._action_storage.iterids())
+        self.action_ids.sort()
         self.max_rounds = max_rounds
 
         # delta > 0
@@ -73,43 +74,48 @@ class Exp4P(BaseBandit):
 
         model = {
             # probability distribution for action recommendation
-            'action_probs': {},
+            'action_probs': None,
             # weight vector for each expert
-            'w': {},
+            'w': None,
         }
         self._model_storage.save_model(model)
 
     def _exp4p_score(self, context):
-        """The main part of Exp4.P.
-        """
-        advisor_ids = list(six.viewkeys(context))
+        # Convert context to a structured numpy array for vectorized operations
+        advisor_ids = np.array(list(context.keys()))
+        n_advisors = len(advisor_ids)
+        n_actions = len(self.action_ids)
+        
+        # Get or initialize weights
+        w = self._model_storage.get_model().get('w', np.ones(n_advisors))
+        if w is None:
+            w = np.ones(n_advisors)
 
-        w = self._model_storage.get_model()['w']
-        if len(w) == 0:
-            for i in advisor_ids:
-                w[i] = 1
-        w_sum = sum(six.viewvalues(w))
+        # Fill the context matrix and reward vector
+        context_matrix = np.zeros((n_advisors, n_actions))
+        action_index = {aid: idx for idx, aid in enumerate(self.action_ids)}
+        for advisor_idx, actions in context.items():
+            for action, value in actions.items():
+                context_matrix[advisor_idx, action_index[action]] = value
+        
+        # Calculate weighted probabilities for actions
+        w_sum = np.sum(w)
+        action_probs = (1 - self.n_actions * self.p_min) * (np.dot(w, context_matrix) / w_sum) + self.p_min
+        action_probs /= action_probs.sum()
 
-        action_probs_list = []
-        for action_id in self.action_ids:
-            weighted_exp = [w[advisor_id] * context[advisor_id][action_id]
-                            for advisor_id in advisor_ids]
-            prob_vector = np.sum(weighted_exp) / w_sum
-            action_probs_list.append((1 - self.n_actions * self.p_min)
-                                     * prob_vector
-                                     + self.p_min)
-        action_probs_list = np.asarray(action_probs_list)
-        action_probs_list /= action_probs_list.sum()
+        print(f"{action_probs=}")
+        print(f"{w=}")
 
+        # Prepare to save and return the results
         estimated_reward = {}
         uncertainty = {}
         score = {}
-        for action_id, action_prob in zip(self.action_ids, action_probs_list):
+        for action_id, action_prob in zip(self.action_ids, list(action_probs)):
             estimated_reward[action_id] = action_prob
             uncertainty[action_id] = 0
             score[action_id] = action_prob
         self._model_storage.save_model(
-            {'action_probs': estimated_reward, 'w': w})
+            {'action_probs': action_probs, 'w': w})
 
         return estimated_reward, uncertainty, score
 
@@ -165,32 +171,41 @@ class Exp4P(BaseBandit):
         rewards : dictionary
             The dictionary {action_id, reward}, where reward is a float.
         """
-        context = (self._history_storage
-                   .get_unrewarded_history(history_id)
-                   .context)
-
+        print(rewards)
+        # Retrieve the context for the given history_id
+        context = self._history_storage.get_unrewarded_history(history_id).context
         model = self._model_storage.get_model()
         w = model['w']
-        action_probs = model['action_probs']
-        action_ids = list(six.viewkeys(six.next(six.itervalues(context))))
+        action_probs_arr = model['action_probs']
 
-        # Update the model
+        # Prepare arrays from the context and rewards
+        action_ids = np.array(self.action_ids)
+        n_actions = len(action_ids)
+        n_advisors = len(context)
+        context_matrix = np.zeros((n_advisors, n_actions))
+        action_index = {aid: idx for idx, aid in enumerate(action_ids)}
+
+        # Fill the context matrix and reward vector
+        for advisor_idx, actions in context.items():
+            for action, value in actions.items():
+                context_matrix[advisor_idx, action_index[action]] = value
+        
+        # Calculate y_hat and v_hat using vectorized operations
         for action_id, reward in six.viewitems(rewards):
-            y_hat = {}
-            v_hat = {}
-            for i in six.viewkeys(context):
-                y_hat[i] = (context[i][action_id] * reward
-                            / action_probs[action_id])
-                v_hat[i] = sum(
-                    [context[i][k] / action_probs[k] for k in action_ids])
-                w[i] = w[i] * np.exp(
-                    self.p_min / 2
-                    * (y_hat[i] + v_hat[i]
-                       * np.sqrt(np.log(len(context) / self.delta)
-                                 / (len(action_ids) * self.max_rounds))))
+            y_hat = (context_matrix[:,action_index[action_id]] * reward) / action_probs_arr[action_index[action_id]]
+            v_hat = np.sum(context_matrix / action_probs_arr, axis=1)
+            print(f"{y_hat=}")
+            print(f"{v_hat=}")
 
-        self._model_storage.save_model({
-            'action_probs': action_probs, 'w': w})
+            # Update weights
+            updates = self.p_min / 2 * (y_hat + v_hat * np.sqrt(np.log(n_advisors / self.delta) / (n_actions * self.max_rounds)))
+            print(f"{updates=}")
+            updates = np.exp(updates)
+            print(f"{updates=}")
+            w *= updates
+
+        # self._history_storage.add_reward(history_id, rewards)
+        self._model_storage.save_model({'action_probs': action_probs_arr, 'w': w})
 
         # Update the history
         self._history_storage.add_reward(history_id, rewards)
