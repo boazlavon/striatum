@@ -9,6 +9,7 @@ import six
 from six.moves import zip
 import numpy as np
 
+from ..storage import Recommendation
 from striatum.bandit.bandit import BaseBandit
 
 LOGGER = logging.getLogger(__name__)
@@ -142,12 +143,13 @@ class Exp4P(BaseBandit):
 
         for action_id in action_recommendation_ids:
             action = self.get_action_with_id(action_id)
-            action_recommendation.append({
-                'action': action,
-                'estimated_reward': estimated_reward[action_id],
-                'uncertainty': uncertainty[action_id],
-                'score': score[action_id],
-            })
+            action_recommendation.append(
+                Recommendation(
+                action=action,
+                estimated_reward=estimated_reward[action_id],
+                uncertainty=uncertainty[action_id],
+                score=score[action_id]
+            ))
 
         self.n_total += 1
         history_id = self._history_storage.add_history(

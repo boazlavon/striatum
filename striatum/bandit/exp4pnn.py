@@ -13,6 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+from ..storage import Recommendation
+
 
 from striatum.bandit.bandit import BaseBandit
 
@@ -192,13 +194,12 @@ class Exp4PNN(BaseBandit):
         for action_id in action_recommendation_ids:
             action = self.get_action_with_id(action_id)
             action_recommendation.append(
-                {
-                    "action": action,
-                    "estimated_reward": estimated_reward[action_id],
-                    "uncertainty": uncertainty[action_id],
-                    "score": score[action_id],
-                }
-            )
+                Recommendation(
+                action=action,
+                estimated_reward=estimated_reward[action_id],
+                uncertainty=uncertainty[action_id],
+                score=score[action_id]
+            ))
 
         self.n_total += 1
         history_id = self._history_storage.add_history(context, action_recommendation, rewards=None)

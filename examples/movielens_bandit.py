@@ -171,15 +171,15 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
             if len(watched_list) == 0:
                 print(f'No watched list for user {int(streaming_batch.iloc[t, 0])}')
 
-            if action[0]['action'].action_id not in list(watched_list['movie_id']):
-                policy.reward(history_id, {action[0]['action'].action_id: 0.0})
+            if action[0].action.action_id not in list(watched_list['movie_id']):
+                policy.reward(history_id, {action[0].action.action_id: 0.0})
                 if t == 1:
                     seq_error[t] = 1.0
                 else:
                     seq_error[t] = seq_error[t - 1] + 1.0
 
             else:
-                policy.reward(history_id, {action[0]['action'].action_id: 1.0})
+                policy.reward(history_id, {action[0].action.action_id: 1.0})
                 if t > 1:
                     seq_error[t] = seq_error[t - 1]
             print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
@@ -212,18 +212,15 @@ def main():
     streaming_batch, user_feature, actions, reward_list, action_context = get_data()
     streaming_batch_small = streaming_batch.iloc[0:10000]
 
-    # conduct regret analyses
+    #conduct regret analyses
     #experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
-    #experiment_bandit = ['Exp3', 'Exp4PNN', 'Exp4P']
-    #experiment_bandit = ['Exp3NN', 'NN', 'Exp3', 'NNP']
     experiment_bandit = []
     experiment_bandit_kwargs = []
 
-    bandit = 'Exp3NN'
     #exp3nn_kwargs = [{'use_exp3': True}, {'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_probs': True}]
     exp3nn_kwargs = [{'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}]
     for kwargs in exp3nn_kwargs:
-        experiment_bandit.append(bandit)
+        experiment_bandit.append('Exp3NN')
         experiment_bandit_kwargs.append(kwargs)
 
     no_kwargs_bandits = ['Exp3', 'Exp4P', 'Exp4PNN']

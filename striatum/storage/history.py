@@ -56,7 +56,7 @@ class History(object):
         for rec in recommendations:
             if rec.get('reward', None) is None:
                 continue
-            rewards[rec['action'].id] = rec['reward']
+            rewards[rec.action.id] = rec.reward
         return rewards
 
 

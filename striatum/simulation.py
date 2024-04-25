@@ -89,7 +89,7 @@ def evaluate_policy(policy, context, desired_actions):
         history_id, recommendation = policy.get_action(context[t])
         if len(recommendation) != 1:
             print(f'alert: {recommendation=}')
-        action_id = recommendation[0]['action'].id
+        action_id = recommendation[0].action.id
         if desired_actions[t] != action_id:
             policy.reward(history_id, {action_id: 0})
             if t == 0:
