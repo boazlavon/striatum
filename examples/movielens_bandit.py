@@ -218,20 +218,21 @@ def main():
     experiment_bandit_kwargs = []
 
     #exp3nn_kwargs = [{'use_exp3': True}, {'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_probs': True}]
-    exp3nn_kwargs = [{'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}]
-    for kwargs in exp3nn_kwargs:
-        experiment_bandit.append('Exp3NN')
-        experiment_bandit_kwargs.append(kwargs)
-
-    no_kwargs_bandits = ['Exp3', 'Exp4P', 'Exp4PNN']
+    no_kwargs_bandits = ['Exp3']
     for bandit in no_kwargs_bandits:
         experiment_bandit.append(bandit)
         experiment_bandit_kwargs.append({})
 
+    exp3nn_kwargs = [{'use_exp3': False, 'use_nn_update': True}, {'use_exp3': True, 'use_nn_update': True}]
+    for kwargs in exp3nn_kwargs:
+        experiment_bandit.append('Exp3NN')
+        experiment_bandit_kwargs.append(kwargs)
+
+    #no_kwargs_bandits = ['Exp3', 'Exp4P', 'Exp4PNN']
+
     regret = {}
     col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     for idx, (bandit, bandit_kwargs) in enumerate(zip(experiment_bandit, experiment_bandit_kwargs)):
-        set_seed(42)
         print(f"Running bandit {bandit} with kwargs {bandit_kwargs}")
         try:
             policy = policy_generation(bandit, actions, bandit_kwargs)
