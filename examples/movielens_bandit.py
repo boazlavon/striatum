@@ -27,11 +27,13 @@ from striatum.bandit import linthompsamp
 from striatum.bandit import exp4p
 from striatum.bandit import exp4pnn
 from striatum.bandit import exp3
+from striatum.bandit import exp3nn
 from striatum.storage.action import Action, MemoryActionStorage
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
+from collections import OrderedDict
 
 def set_seed(seed):
     # Set seed for Python's built-in random module
@@ -85,7 +87,7 @@ def get_advice(context, actions_id, experts):
     return advice
 
 
-def policy_generation(bandit, actions):
+def policy_generation(bandit, actions, kwargs={}):
     historystorage = history.MemoryHistoryStorage()
     modelstorage = model.MemoryModelStorage()
     max_rounds = 10000
@@ -112,7 +114,12 @@ def policy_generation(bandit, actions):
     elif bandit == 'Exp3':
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
-        policy = exp3.Exp3(historystorage, modelstorage, actions_storage, gamma=0.2)
+        policy = exp3.Exp3(historystorage, modelstorage, actions_storage, gamma=0.3)
+
+    elif bandit == 'Exp3NN':
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp3nn.Exp3NN(historystorage, modelstorage, actions_storage, **kwargs)
 
     elif bandit == 'random':
         policy = 0
@@ -125,7 +132,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
     seq_error = np.zeros(shape=(times, 1))
     actions_id = [actions[i].action_id for i in range(len(actions))]
     print()
-    if bandit in ['LinUCB', 'LinThompSamp', 'UCB1', 'Exp3']:
+    if bandit in ['LinUCB', 'LinThompSamp', 'UCB1', 'Exp3', 'Exp3NN', 'NN', 'NNP']:
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             full_context = {}
@@ -207,25 +214,50 @@ def main():
 
     # conduct regret analyses
     #experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
-    experiment_bandit = ['Exp3', 'Exp4PNN', 'Exp4P']
+    #experiment_bandit = ['Exp3', 'Exp4PNN', 'Exp4P']
+    #experiment_bandit = ['Exp3NN', 'NN', 'Exp3', 'NNP']
+    experiment_bandit = []
+    experiment_bandit_kwargs = []
+
+    bandit = 'Exp3NN'
+    #exp3nn_kwargs = [{'use_exp3': True}, {'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_probs': True}]
+    exp3nn_kwargs = [{'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}]
+    for kwargs in exp3nn_kwargs:
+        experiment_bandit.append(bandit)
+        experiment_bandit_kwargs.append(kwargs)
+
+    no_kwargs_bandits = ['Exp3', 'Exp4P', 'Exp4PNN']
+    for bandit in no_kwargs_bandits:
+        experiment_bandit.append(bandit)
+        experiment_bandit_kwargs.append({})
+
     regret = {}
     col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-    i = 0
-    for bandit in experiment_bandit:
-        policy = policy_generation(bandit, actions)
-        seq_error = policy_evaluation(policy, bandit, streaming_batch_small, user_feature, reward_list,
-                                      actions, action_context)
-        regret[bandit] = regret_calculation(seq_error)
-        plt.plot(range(len(regret[bandit])), regret[bandit], c=col[i], ls='-', label=bandit)
-        plt.xlabel('time')
-        plt.ylabel('regret')
-        plt.legend()
-        axes = plt.gca()
-        axes.set_ylim([0, 1])
-        plt.title("Regret Bound with respect to T")
-        i += 1
+    for idx, (bandit, bandit_kwargs) in enumerate(zip(experiment_bandit, experiment_bandit_kwargs)):
+        set_seed(42)
+        print(f"Running bandit {bandit} with kwargs {bandit_kwargs}")
+        try:
+            policy = policy_generation(bandit, actions, bandit_kwargs)
+            seq_error = policy_evaluation(policy, bandit, streaming_batch_small, user_feature, reward_list,
+                                        actions, action_context)
+            label=bandit
+            for key, value in bandit_kwargs.items():
+                label += f"_{key}={value}"
+            regret[label] = regret_calculation(seq_error)
+            plt.plot(range(len(regret[label])), regret[label], c=col[idx], ls='-', label=label)
+            plt.xlabel('time')
+            plt.ylabel('regret')
+            plt.legend()
+            axes = plt.gca()
+            axes.set_ylim([0, 1])
+            plt.title("Regret Bound with respect to T")
+        except Exception as e:
+            print(e)
+            import ipdb; ipdb.set_trace()
+            print(e)
     #plt.show()
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = str(timestamp)
     figure_name = 'movielens'
     filename = f"plots/{figure_name}_{timestamp}.png"
     plt.savefig(filename)
