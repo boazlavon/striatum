@@ -15,6 +15,7 @@ import json
 
 import pandas as pd
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 from os.path import join
 from datetime import datetime
@@ -120,6 +121,16 @@ def policy_generation(bandit, actions, kwargs={}):
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp3nn.Exp3NN(historystorage, modelstorage, actions_storage, **kwargs)
+    
+    elif bandit == 'Exp3NNUpdate':
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp3nn.Exp3NNUpdate(historystorage, modelstorage, actions_storage, **kwargs)
+   
+    elif bandit == 'Exp3NNDist':
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp3nn.Exp3NNDist(historystorage, modelstorage, actions_storage, **kwargs)
 
     elif bandit == 'random':
         policy = 0
@@ -132,7 +143,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
     seq_error = np.zeros(shape=(times, 1))
     actions_id = [actions[i].action_id for i in range(len(actions))]
     print()
-    if bandit in ['LinUCB', 'LinThompSamp', 'UCB1', 'Exp3', 'Exp3NN', 'NN', 'NNP']:
+    if bandit in ['LinUCB', 'LinThompSamp', 'UCB1', 'Exp3', 'Exp3NN', 'Exp3NNUpdate', 'Exp3NNDist']:
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             full_context = {}
@@ -154,7 +165,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                     seq_error[t] = seq_error[t - 1]
             print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
 
-    elif bandit == 'Exp4P' or bandit == 'Exp4PNN':
+    elif bandit in ['Exp4P', 'Exp4PNN']:
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             if not len(feature):
@@ -212,28 +223,32 @@ def main():
     streaming_batch, user_feature, actions, reward_list, action_context = get_data()
     streaming_batch_small = streaming_batch.iloc[0:10000]
 
-    #conduct regret analyses
-    #experiment_bandit = ['LinUCB', 'LinThompSamp', 'Exp4P', 'UCB1', 'Exp3', 'random']
     experiment_bandit = []
-    experiment_bandit_kwargs = []
-
-    #exp3nn_kwargs = [{'use_exp3': True}, {'use_exp3': True, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_update': True}, {'use_exp3': False, 'use_nn_probs': True}]
-    no_kwargs_bandits = ['Exp3']
-    for bandit in no_kwargs_bandits:
-        experiment_bandit.append(bandit)
-        experiment_bandit_kwargs.append({})
-
-    exp3nn_kwargs = [{'use_exp3': False, 'use_nn_update': True}, {'use_exp3': True, 'use_nn_update': True}]
+    exp3nn_kwargs = [{'use_exp3': False}, {'use_exp3': True}]
     for kwargs in exp3nn_kwargs:
-        experiment_bandit.append('Exp3NN')
-        experiment_bandit_kwargs.append(kwargs)
+        experiment_bandit.append(('Exp3NNUpdate', kwargs))
 
-    #no_kwargs_bandits = ['Exp3', 'Exp4P', 'Exp4PNN']
+    #no_kwargs_bandits =['Exp3', 'Exp3NN', 'Exp3NNDist', 'Exp4P', 'Exp4PNN']
+    no_kwargs_bandits =['Exp3','Exp3NNDist']
+    for bandit in no_kwargs_bandits:
+        experiment_bandit.append((bandit, {}))
 
     regret = {}
     col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-    for idx, (bandit, bandit_kwargs) in enumerate(zip(experiment_bandit, experiment_bandit_kwargs)):
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = str(timestamp)
+    figure_name = 'movielens'
+
+    results_dir_path = os.path.join("plots", "results", f"{figure_name}_{timestamp}")
+    regrets_dir_path = os.path.join(results_dir_path, 'regrets')
+    os.makedirs(regrets_dir_path, exist_ok=True)
+    final_results_dir_path = os.path.join(results_dir_path, 'final_results')
+    os.makedirs(final_results_dir_path, exist_ok=True)
+
+    for idx, (bandit, bandit_kwargs) in enumerate(experiment_bandit):
         print(f"Running bandit {bandit} with kwargs {bandit_kwargs}")
+        set_seed(42)
         try:
             policy = policy_generation(bandit, actions, bandit_kwargs)
             seq_error = policy_evaluation(policy, bandit, streaming_batch_small, user_feature, reward_list,
@@ -241,33 +256,38 @@ def main():
             label=bandit
             for key, value in bandit_kwargs.items():
                 label += f"_{key}={value}"
-            regret[label] = regret_calculation(seq_error)
-            plt.plot(range(len(regret[label])), regret[label], c=col[idx], ls='-', label=label)
+            bandit_regret = regret_calculation(seq_error)
+
+            plt.plot(range(len(bandit_regret)), bandit_regret, c=col[idx], ls='-', label=label)
+            bandit_regret = [val[0] for val in bandit_regret]
+
+            regret[label] = { 'bandit': bandit, 'kwargs': bandit_kwargs, 'regret': bandit_regret }
             plt.xlabel('time')
             plt.ylabel('regret')
             plt.legend()
             axes = plt.gca()
             axes.set_ylim([0, 1])
             plt.title("Regret Bound with respect to T")
+
+            regret_json_filename = os.path.join(regrets_dir_path, f"{label}_regret.json")
+            with open(regret_json_filename, 'w') as f:
+                json.dump(regret[label], f, indent=4)
+            print(f"Saved regret data as {regret_json_filename}")
+
         except Exception as e:
             print(e)
-            import ipdb; ipdb.set_trace()
-            print(e)
-    #plt.show()
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    timestamp = str(timestamp)
-    figure_name = 'movielens'
-    filename = f"plots/{figure_name}_{timestamp}.png"
-    plt.savefig(filename)
+    
+    plot_filename = f"{figure_name}_{timestamp}.png"
+    plot_path = os.path.join(final_results_dir_path, plot_filename)
+    plt.savefig(plot_path)
     plt.close()  # Close the figure context
-    print(f"Saved plot as {filename}")
+    print(f"Saved plot as {plot_path}")
 
-    json_regret = { bandit : [val[0] for val in values] for bandit, values in regret.items() }
-    print(json_regret)
-    regret_json_filename = f"plots/{figure_name}_{timestamp}_regret.json"
-    with open(regret_json_filename, 'w') as f:
-        json.dump(json_regret, f, indent=4)
-    print(f"Saved regret data as {regret_json_filename}")
+    regret_json_filename = f"{figure_name}_{timestamp}_regret.json"
+    regret_json_path = os.path.join(final_results_dir_path, regret_json_filename)
+    with open(regret_json_path, 'w') as f:
+        json.dump(regret, f, indent=4)
+    print(f"Saved regret data as {regret_json_path}")
 
 
 if __name__ == '__main__':

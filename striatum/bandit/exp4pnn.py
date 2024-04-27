@@ -75,10 +75,9 @@ class Exp4PNN(BaseBandit):
         delta=0.1,
         p_min=None,
         max_rounds=10000,
-        hidden_size1=64,
-        hidden_size2=128,
+        hidden_sizes=[64, 128],
         dropout_prob=0.5,
-        lr=1e-3
+        lr=1e-3,
     ):
         super(Exp4PNN, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
@@ -90,9 +89,9 @@ class Exp4PNN(BaseBandit):
         self.num_advisors = num_advisors
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(self.device)
-        self.model = NeuralNetwork(
-            [self.num_advisors, hidden_size1, hidden_size2, self.num_advisors], dropout_prob
-        ).to(self.device)
+
+        layers = [self.num_advisors] + hidden_sizes + [self.num_advisors]
+        self.model = NeuralNetwork(layers, dropout_prob).to(self.device)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=lr)
 
         # delta > 0
@@ -195,11 +194,12 @@ class Exp4PNN(BaseBandit):
             action = self.get_action_with_id(action_id)
             action_recommendation.append(
                 Recommendation(
-                action=action,
-                estimated_reward=estimated_reward[action_id],
-                uncertainty=uncertainty[action_id],
-                score=score[action_id]
-            ))
+                    action=action,
+                    estimated_reward=estimated_reward[action_id],
+                    uncertainty=uncertainty[action_id],
+                    score=score[action_id],
+                )
+            )
 
         self.n_total += 1
         history_id = self._history_storage.add_history(context, action_recommendation, rewards=None)
