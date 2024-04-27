@@ -88,7 +88,7 @@ class Exp4PNN(BaseBandit):
         self.max_rounds = max_rounds
         self.num_advisors = num_advisors
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(self.device)
+        #print(self.device)
 
         layers = [self.num_advisors] + hidden_sizes + [self.num_advisors]
         self.model = NeuralNetwork(layers, dropout_prob).to(self.device)
@@ -258,8 +258,8 @@ class Exp4PNN(BaseBandit):
             grad_action_probs = self._calculate_action_probs(context, w)
             p = grad_action_probs[action_index[action_id]]
             loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
-            print(f"{w=}")
-            print(f"{loss=}")
+            #print(f"{w=}")
+            #print(f"{loss=}")
             loss.backward()
             self.optimizer.step()
             w = w.detach()
