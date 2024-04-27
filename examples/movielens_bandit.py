@@ -41,6 +41,8 @@ from sklearn.multiclass import OneVsRestClassifier
 from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
 from collections import OrderedDict
 
+from plot_trails_configs import get_bandit_trials_kwargs, get_label, get_result_path
+
 
 def set_seed(seed):
     # Set seed for Python's built-in random module
@@ -244,32 +246,6 @@ def regret_calculation(seq_error):
     regret = [x / y for x, y in zip(seq_error, range(1, t + 1))]
     return regret
 
-
-def get_bandit_trials_kwargs(bandit, trials_config, hyper_params):
-    bandit_trials = {}
-    for hyper_param in hyper_params:
-        hyper_param_config = [config for config in trials_config if config["name"] == hyper_param][0]
-        if bandit in hyper_param_config["bandits"]:
-            bandit_trials[hyper_param] = hyper_param_config["values"]
-    print(bandit, bandit_trials)
-    keys = bandit_trials.keys()
-    values = bandit_trials.values()
-    combinations = itertools.product(*values)
-    # Create a list of dictionaries for each combination
-    trials_kwargs = [dict(zip(keys, combination)) for combination in combinations]
-    # trials_kwargs = [{'bandit': bandit, **trial_kwargs} for trial_kwargs in trials_kwargs]
-    return trials_kwargs
-
-def get_label(bandit, bandit_kwargs):
-    label = bandit
-    for key, value in sorted(bandit_kwargs.items()):
-        label += f"_{key}={value}"
-    return label
-
-def get_result_path(bandit, bandit_kwargs, regrets_dir_path):
-    label = get_label(bandit, bandit_kwargs)
-    return os.path.join(regrets_dir_path, f"{label}.json")
-
 def run_single_trial(
     bandit,
     bandit_kwargs,
@@ -317,7 +293,7 @@ def main():
     os.makedirs(regrets_dir_path, exist_ok=True)
 
     bandits = [config for config in trials_config if config["name"] == "bandit"][0]['values']
-    bandits = ['Exp3NNUpdate']
+    bandits = ['Exp3NNDist']
     for bandit in bandits:
         bandit_trials_kwargs = get_bandit_trials_kwargs(bandit, trials_config, hyper_params)
         for idx, bandit_kwargs in enumerate(bandit_trials_kwargs):
