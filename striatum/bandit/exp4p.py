@@ -44,7 +44,7 @@ class Exp4P(BaseBandit):
     """
 
     def __init__(self, actions, historystorage, modelstorage, delta=0.1,
-                 p_min=None, max_rounds=10000):
+                 p_min=None, max_rounds=10000, num_advisors=2):
         super(Exp4P, self).__init__(historystorage, modelstorage, actions)
         self.n_total = 0
         # number of actions (i.e. K in the paper)
@@ -57,6 +57,7 @@ class Exp4P(BaseBandit):
             raise ValueError("delta should be float, the one"
                              "given is: %f" % p_min)
         self.delta = delta
+        self.num_advisors = num_advisors
 
         # p_min in [0, 1/k]
         if p_min is None:
@@ -87,6 +88,7 @@ class Exp4P(BaseBandit):
 
         w = self._model_storage.get_model()['w']
         if len(w) == 0:
+            assert len(advisor_ids) == self.num_advisors
             for i in advisor_ids:
                 w[i] = 1
         w_sum = sum(six.viewvalues(w))
