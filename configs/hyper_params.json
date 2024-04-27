@@ -5,5 +5,6 @@
     "seed",
     "use_exp3",
     "delta",
-    "lr"
+    "lr",
+    "num_advisors"
 ]
