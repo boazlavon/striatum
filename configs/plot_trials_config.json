@@ -46,7 +46,10 @@
     {
         "name": "dropout_prob",
         "values": [
-            0.2,  0.0
+            0.0,
+            0.2,
+            0.5,
+            0.8
         ],
         "bandits": [
             "Exp3NN",
@@ -82,9 +85,9 @@
     },
     {
         "name": "delta",
-        "values": [0.1],
+        "values": [0.5],
         "bandits": [
-            "Exp4PNN", "Exp4"
+            "Exp4PNN", "Exp4P"
         ]
     },
     {
@@ -99,9 +102,9 @@
     },
     {
         "name": "num_advisors",
-        "values": [2,4,6],
+        "values": [2],
         "bandits": [
-            "Exp4PNN", "Exp4"
+            "Exp4PNN", "Exp4P"
         ]
     }
 ]
