@@ -289,8 +289,20 @@ def run_single_trial(
     )
     bandit_regret = regret_calculation(seq_error)
     bandit_regret = [val[0] for val in bandit_regret]
-    model_storage.get_model()['w'] = model_storage.get_model()['w'].tolist()
-    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret, 'model_storage': model_storage.get_model()}
+
+    result_dict = []
+    model_storage_dict = model_storage.get_model()
+    if model_storage_dict is not None:
+        result_dict = model_storage_dict.copy()
+        for key, value in model_storage_dict.items():
+            try:
+                result_dict[key] = value.tolist()
+            except:
+                pass
+            print(key, result_dict[key])
+    else:
+        print("Warning: model storage is empty")
+    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret, 'model_storage': result_dict}
     result_json_path = get_result_path(bandit, bandit_kwargs, regrets_dir_path)
     with open(result_json_path, "w") as f:
         json.dump(result, f, indent=4)
@@ -315,7 +327,7 @@ def main():
     os.makedirs(regrets_dir_path, exist_ok=True)
 
     bandits = [config for config in trials_config if config["name"] == "bandit"][0]['values']
-    bandits = ["Exp3"]
+    bandits = ["Exp4PNN"]
     for bandit in bandits:
         bandit_trials_kwargs = get_bandit_trials_kwargs(bandit, trials_config, hyper_params)
         for idx, bandit_kwargs in enumerate(bandit_trials_kwargs):
