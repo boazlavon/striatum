@@ -1,0 +1,107 @@
+[
+    {
+        "name": "bandit",
+        "values": [
+            "Exp3",
+            "Exp3NN",
+            "Exp3NNUpdate",
+            "Exp3NNDist",
+            "Exp4P",
+            "Exp4PNN",
+            "random"
+        ]
+    },
+    {
+        "name": "gamma",
+        "values": [
+            1e-05,
+            0.1,
+            0.3,
+            0.5
+        ],
+        "bandits": [
+            "Exp3",
+            "Exp3NN",
+            "Exp3NNUpdate"
+        ]
+    },
+    {
+        "name": "hidden_sizes",
+        "values": [
+            [
+                64,
+                128,
+                256
+            ],
+            [
+                64,
+                128
+            ],
+            [
+                64
+            ]
+        ],
+        "bandits": [
+            "Exp3NN",
+            "Exp3NNUpdate",
+            "Exp3NNDist",
+            "Exp4PNN"
+        ]
+    },
+    {
+        "name": "dropout_prob",
+        "values": [
+            0.2,
+            0.5,
+            0.8
+        ],
+        "bandits": [
+            "Exp3NN",
+            "Exp3NNUpdate",
+            "Exp3NNDist",
+            "Exp4PNN"
+        ]
+    },
+    {
+        "name": "seed",
+        "values": [
+            42
+        ],
+        "bandits": [
+            "Exp3",
+            "Exp3NN",
+            "Exp3NNUpdate",
+            "Exp3NNDist",
+            "Exp4P",
+            "Exp4PNN",
+            "random"
+        ]
+    },
+    {
+        "name": "use_exp3",
+        "values": [
+            true,
+            false
+        ],
+        "bandits": [
+            "Exp3NNUpdate"
+        ]
+    },
+    {
+        "name": "delta",
+        "values": [0.1],
+        "bandits": [
+            "Exp4PNN", "Exp4"
+        ]
+    },
+    {
+        "name": "lr",
+        "values": [0.01],
+        "bandits": [
+            "Exp3NN",
+            "Exp3NNUpdate",
+            "Exp3NNDist",
+            "Exp4PNN"
+        ]
+    }
+]

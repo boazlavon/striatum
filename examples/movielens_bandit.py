@@ -12,6 +12,11 @@ datasets (use "movielens_preprocess.py"), and then you can run this example.
 import random
 import torch
 import json
+import itertools
+import sys
+from tqdm import tqdm
+import time
+
 
 import pandas as pd
 import numpy as np
@@ -36,6 +41,7 @@ from sklearn.multiclass import OneVsRestClassifier
 from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
 from collections import OrderedDict
 
+
 def set_seed(seed):
     # Set seed for Python's built-in random module
     random.seed(seed)
@@ -55,11 +61,19 @@ def set_seed(seed):
 
 
 def get_data():
-    streaming_batch = pd.read_csv(join(PROCESSED_DATA_DIR, 'streaming_batch.csv'), sep='\t', names=['user_id'], engine='c')
-    user_feature = pd.read_csv(join(PROCESSED_DATA_DIR, 'user_feature.csv'), sep='\t', header=0, index_col=0, engine='c')
-    actions_id = list(pd.read_csv(join(PROCESSED_DATA_DIR, 'actions.csv'), sep='\t', header=0, engine='c')['movie_id'])
-    reward_list = pd.read_csv(join(PROCESSED_DATA_DIR, 'reward_list.csv'), sep='\t', header=0, engine='c')
-    action_context = pd.read_csv(join(PROCESSED_DATA_DIR, 'action_context.csv'), sep='\t', header=0, engine='c')
+    streaming_batch = pd.read_csv(
+        join(PROCESSED_DATA_DIR, "streaming_batch.csv"), sep="\t", names=["user_id"], engine="c"
+    )
+    user_feature = pd.read_csv(
+        join(PROCESSED_DATA_DIR, "user_feature.csv"), sep="\t", header=0, index_col=0, engine="c"
+    )
+    actions_id = list(
+        pd.read_csv(join(PROCESSED_DATA_DIR, "actions.csv"), sep="\t", header=0, engine="c")["movie_id"]
+    )
+    reward_list = pd.read_csv(join(PROCESSED_DATA_DIR, "reward_list.csv"), sep="\t", header=0, engine="c")
+    action_context = pd.read_csv(
+        join(PROCESSED_DATA_DIR, "action_context.csv"), sep="\t", header=0, engine="c"
+    )
 
     actions = []
     for key in actions_id:
@@ -70,7 +84,9 @@ def get_data():
 
 def train_expert(action_context):
     logreg = OneVsRestClassifier(LogisticRegression())
-    mnb = OneVsRestClassifier(MultinomialNB(), )
+    mnb = OneVsRestClassifier(
+        MultinomialNB(),
+    )
     logreg.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
     mnb.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
     return [logreg, mnb]
@@ -92,67 +108,75 @@ def policy_generation(bandit, actions, kwargs={}):
     historystorage = history.MemoryHistoryStorage()
     modelstorage = model.MemoryModelStorage()
     max_rounds = 10000
-    if bandit == 'Exp4P':
+    if bandit == "Exp4P":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
-        policy = exp4p.Exp4P(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds)
+        policy = exp4p.Exp4P(
+            actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds
+        )
 
-    if bandit == 'Exp4PNN':
+    if bandit == "Exp4PNN":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
-        policy = exp4pnn.Exp4PNN(actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds)
+        policy = exp4pnn.Exp4PNN(
+            actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds
+        )
 
-    elif bandit == 'LinUCB':
+    elif bandit == "LinUCB":
         policy = linucb.LinUCB(actions, historystorage, modelstorage, 0.3, 20)
 
-    elif bandit == 'LinThompSamp':
-        policy = linthompsamp.LinThompSamp(actions, historystorage, modelstorage,
-                                           d=20, delta=0.61, r=0.01, epsilon=0.71)
+    elif bandit == "LinThompSamp":
+        policy = linthompsamp.LinThompSamp(
+            actions, historystorage, modelstorage, d=20, delta=0.61, r=0.01, epsilon=0.71
+        )
 
-    elif bandit == 'UCB1':
+    elif bandit == "UCB1":
         policy = ucb1.UCB1(actions, historystorage, modelstorage)
 
-    elif bandit == 'Exp3':
+    elif bandit == "Exp3":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp3.Exp3(historystorage, modelstorage, actions_storage, gamma=0.3)
 
-    elif bandit == 'Exp3NN':
+    elif bandit == "Exp3NN":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp3nn.Exp3NN(historystorage, modelstorage, actions_storage, **kwargs)
-    
-    elif bandit == 'Exp3NNUpdate':
+
+    elif bandit == "Exp3NNUpdate":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp3nn.Exp3NNUpdate(historystorage, modelstorage, actions_storage, **kwargs)
-   
-    elif bandit == 'Exp3NNDist':
+
+    elif bandit == "Exp3NNDist":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp3nn.Exp3NNDist(historystorage, modelstorage, actions_storage, **kwargs)
 
-    elif bandit == 'random':
+    elif bandit == "random":
         policy = 0
 
     return policy
 
 
-def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list, actions, action_context=None):
+def policy_evaluation(
+    policy, bandit, streaming_batch, user_feature, reward_list, actions, action_context=None
+):
     times = len(streaming_batch)
     seq_error = np.zeros(shape=(times, 1))
     actions_id = [actions[i].action_id for i in range(len(actions))]
     print()
-    if bandit in ['LinUCB', 'LinThompSamp', 'UCB1', 'Exp3', 'Exp3NN', 'Exp3NNUpdate', 'Exp3NNDist']:
+    pbar = tqdm(total=times)
+    if bandit in ["LinUCB", "LinThompSamp", "UCB1", "Exp3", "Exp3NN", "Exp3NNUpdate", "Exp3NNDist"]:
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             full_context = {}
             for action_id in actions_id:
                 full_context[action_id] = feature
             history_id, action = policy.get_action(full_context, 1)
-            watched_list = reward_list[reward_list['user_id'] == int(streaming_batch.iloc[t, 0])]
+            watched_list = reward_list[reward_list["user_id"] == int(streaming_batch.iloc[t, 0])]
 
-            if action[0].action.action_id not in list(watched_list['movie_id']):
+            if action[0].action.action_id not in list(watched_list["movie_id"]):
                 policy.reward(history_id, {action[0].action.action_id: 0.0})
                 if t == 1:
                     seq_error[t] = 1.0
@@ -163,13 +187,14 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 policy.reward(history_id, {action[0].action.action_id: 1.0})
                 if t > 0:
                     seq_error[t] = seq_error[t - 1]
-            print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
+            #print(f"regret={seq_error[t] / (1.0 * t)} | t={t}/{times}")
+            pbar.update(1)  # Manually update the progress bar by 1
 
-    elif bandit in ['Exp4P', 'Exp4PNN']:
+    elif bandit in ["Exp4P", "Exp4PNN"]:
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             if not len(feature):
-                print(f'No feature for user {int(streaming_batch.iloc[t, 0])}')
+                print(f"No feature for user {int(streaming_batch.iloc[t, 0])}")
             experts = train_expert(action_context)
             advice = {}
             for i in range(len(experts)):
@@ -178,11 +203,11 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 for j in range(len(prob)):
                     advice[i][actions_id[j]] = prob[j]
             history_id, action = policy.get_action(advice)
-            watched_list = reward_list[reward_list['user_id'] == int(streaming_batch.iloc[t, 0])]
+            watched_list = reward_list[reward_list["user_id"] == int(streaming_batch.iloc[t, 0])]
             if len(watched_list) == 0:
-                print(f'No watched list for user {int(streaming_batch.iloc[t, 0])}')
+                print(f"No watched list for user {int(streaming_batch.iloc[t, 0])}")
 
-            if action[0].action.action_id not in list(watched_list['movie_id']):
+            if action[0].action.action_id not in list(watched_list["movie_id"]):
                 policy.reward(history_id, {action[0].action.action_id: 0.0})
                 if t == 1:
                     seq_error[t] = 1.0
@@ -193,14 +218,15 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
                 policy.reward(history_id, {action[0].action.action_id: 1.0})
                 if t > 1:
                     seq_error[t] = seq_error[t - 1]
-            print(f'regret={seq_error[t] / (1.0 * t)} | t={t}/{times}')
+            #print(f"regret={seq_error[t] / (1.0 * t)} | t={t}/{times}")
+            pbar.update(1)  # Manually update the progress bar by 1
 
-    elif bandit == 'random':
+    elif bandit == "random":
         for t in range(times):
-            action = actions_id[np.random.randint(0, len(actions)-1)]
-            watched_list = reward_list[reward_list['user_id'] == streaming_batch.iloc[t, 0]]
+            action = actions_id[np.random.randint(0, len(actions) - 1)]
+            watched_list = reward_list[reward_list["user_id"] == streaming_batch.iloc[t, 0]]
 
-            if action not in list(watched_list['movie_id']):
+            if action not in list(watched_list["movie_id"]):
                 if t == 0:
                     seq_error[t] = 1.0
                 else:
@@ -209,7 +235,7 @@ def policy_evaluation(policy, bandit, streaming_batch, user_feature, reward_list
             else:
                 if t > 0:
                     seq_error[t] = seq_error[t - 1]
-
+    pbar.close()  # Close the progress bar after the loop is done
     return seq_error
 
 
@@ -219,77 +245,100 @@ def regret_calculation(seq_error):
     return regret
 
 
+def get_bandit_trials_kwargs(bandit, trials_config, hyper_params):
+    bandit_trials = {}
+    for hyper_param in hyper_params:
+        hyper_param_config = [config for config in trials_config if config["name"] == hyper_param][0]
+        if bandit in hyper_param_config["bandits"]:
+            bandit_trials[hyper_param] = hyper_param_config["values"]
+    print(bandit, bandit_trials)
+    keys = bandit_trials.keys()
+    values = bandit_trials.values()
+    combinations = itertools.product(*values)
+    # Create a list of dictionaries for each combination
+    trials_kwargs = [dict(zip(keys, combination)) for combination in combinations]
+    # trials_kwargs = [{'bandit': bandit, **trial_kwargs} for trial_kwargs in trials_kwargs]
+    return trials_kwargs
+
+def get_label(bandit, bandit_kwargs):
+    label = bandit
+    for key, value in sorted(bandit_kwargs.items()):
+        label += f"_{key}={value}"
+    return label
+
+def get_result_path(bandit, bandit_kwargs, regrets_dir_path):
+    label = get_label(bandit, bandit_kwargs)
+    return os.path.join(regrets_dir_path, f"{label}.json")
+
+def run_single_trial(
+    bandit,
+    bandit_kwargs,
+    actions,
+    streaming_batch_small,
+    user_feature,
+    reward_list,
+    action_context,
+    regrets_dir_path,
+):
+    set_seed(bandit_kwargs["seed"])
+    policy_bandit_kwargs = bandit_kwargs.copy()
+    del policy_bandit_kwargs["seed"]
+
+    policy = policy_generation(bandit, actions, policy_bandit_kwargs)
+    seq_error = policy_evaluation(
+        policy, bandit, streaming_batch_small, user_feature, reward_list, actions, action_context
+    )
+    bandit_regret = regret_calculation(seq_error)
+
+    label = get_label(bandit, bandit_kwargs)
+    bandit_regret = [val[0] for val in bandit_regret]
+    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret}
+    result_json_path = get_result_path(bandit, bandit_kwargs, regrets_dir_path)
+    with open(result_json_path, "w") as f:
+        json.dump(result, f, indent=4)
+    print(f"Saved results to {result_json_path}")
+
 def main():
     streaming_batch, user_feature, actions, reward_list, action_context = get_data()
     streaming_batch_small = streaming_batch.iloc[0:10000]
 
-    experiment_bandit = []
-    exp3nn_kwargs = [{'use_exp3': False}, {'use_exp3': True}]
-    for kwargs in exp3nn_kwargs:
-        experiment_bandit.append(('Exp3NNUpdate', kwargs))
+    trials_config_path = sys.argv[1]
+    hyper_params_path = sys.argv[2]
 
-    #no_kwargs_bandits =['Exp3', 'Exp3NN', 'Exp3NNDist', 'Exp4P', 'Exp4PNN']
-    no_kwargs_bandits =['Exp3','Exp3NNDist']
-    for bandit in no_kwargs_bandits:
-        experiment_bandit.append((bandit, {}))
+    trials_config = {}
+    hyper_params = {}
+    with open(trials_config_path, "r") as f:
+        trials_config = json.load(f)
+    with open(hyper_params_path, "r") as f1:
+        hyper_params = json.load(f1)
 
-    regret = {}
-    col = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    timestamp = str(timestamp)
-    figure_name = 'movielens'
-
-    results_dir_path = os.path.join("plots", "results", f"{figure_name}_{timestamp}")
-    regrets_dir_path = os.path.join(results_dir_path, 'regrets')
+    results_dir_path = os.path.join("results")
+    regrets_dir_path = os.path.join(results_dir_path, "results_jsons")
     os.makedirs(regrets_dir_path, exist_ok=True)
-    final_results_dir_path = os.path.join(results_dir_path, 'final_results')
-    os.makedirs(final_results_dir_path, exist_ok=True)
 
-    for idx, (bandit, bandit_kwargs) in enumerate(experiment_bandit):
-        print(f"Running bandit {bandit} with kwargs {bandit_kwargs}")
-        set_seed(42)
-        try:
-            policy = policy_generation(bandit, actions, bandit_kwargs)
-            seq_error = policy_evaluation(policy, bandit, streaming_batch_small, user_feature, reward_list,
-                                        actions, action_context)
-            label=bandit
-            for key, value in bandit_kwargs.items():
-                label += f"_{key}={value}"
-            bandit_regret = regret_calculation(seq_error)
+    bandits = [config for config in trials_config if config["name"] == "bandit"][0]['values']
+    bandits = ['Exp3NNUpdate']
+    for bandit in bandits:
+        bandit_trials_kwargs = get_bandit_trials_kwargs(bandit, trials_config, hyper_params)
+        for idx, bandit_kwargs in enumerate(bandit_trials_kwargs):
+            result_json_path = get_result_path(bandit, bandit_kwargs, regrets_dir_path)
+            if os.path.exists(result_json_path):
+                print(f"[{idx + 1}/{len(bandit_trials_kwargs)}] Skipping bandit {bandit} with kwargs {bandit_kwargs}")
+                continue
 
-            plt.plot(range(len(bandit_regret)), bandit_regret, c=col[idx], ls='-', label=label)
-            bandit_regret = [val[0] for val in bandit_regret]
-
-            regret[label] = { 'bandit': bandit, 'kwargs': bandit_kwargs, 'regret': bandit_regret }
-            plt.xlabel('time')
-            plt.ylabel('regret')
-            plt.legend()
-            axes = plt.gca()
-            axes.set_ylim([0, 1])
-            plt.title("Regret Bound with respect to T")
-
-            regret_json_filename = os.path.join(regrets_dir_path, f"{label}_regret.json")
-            with open(regret_json_filename, 'w') as f:
-                json.dump(regret[label], f, indent=4)
-            print(f"Saved regret data as {regret_json_filename}")
-
-        except Exception as e:
-            print(e)
-    
-    plot_filename = f"{figure_name}_{timestamp}.png"
-    plot_path = os.path.join(final_results_dir_path, plot_filename)
-    plt.savefig(plot_path)
-    plt.close()  # Close the figure context
-    print(f"Saved plot as {plot_path}")
-
-    regret_json_filename = f"{figure_name}_{timestamp}_regret.json"
-    regret_json_path = os.path.join(final_results_dir_path, regret_json_filename)
-    with open(regret_json_path, 'w') as f:
-        json.dump(regret, f, indent=4)
-    print(f"Saved regret data as {regret_json_path}")
+            print(f"[{idx + 1}/{len(bandit_trials_kwargs)}] Running bandit {bandit} with kwargs {bandit_kwargs}")
+            run_single_trial(
+                bandit,
+                bandit_kwargs,
+                actions,
+                streaming_batch_small,
+                user_feature,
+                reward_list,
+                action_context,
+                regrets_dir_path,
+            )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     set_seed(42)
     main()

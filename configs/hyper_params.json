@@ -1,0 +1,9 @@
+[
+    "gamma",
+    "hidden_sizes",
+    "dropout_prob",
+    "seed",
+    "use_exp3",
+    "delta",
+    "lr"
+]
