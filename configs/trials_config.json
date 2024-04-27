@@ -106,7 +106,7 @@
     },
     {
         "name": "num_advisors",
-        "values": [2],
+        "values": [2,4,6],
         "bandits": [
             "Exp4PNN", "Exp4P"
         ]
