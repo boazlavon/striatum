@@ -38,6 +38,11 @@ from striatum.storage.action import Action, MemoryActionStorage
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.svm import SVC
+
 from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
 from collections import OrderedDict
 
@@ -85,13 +90,24 @@ def get_data():
 
 
 def train_expert(action_context):
+    # Define the models
     logreg = OneVsRestClassifier(LogisticRegression())
-    mnb = OneVsRestClassifier(
-        MultinomialNB(),
-    )
+    mnb = OneVsRestClassifier(MultinomialNB())
+    svc = OneVsRestClassifier(SVC(probability=True))
+    rf = OneVsRestClassifier(RandomForestClassifier())
+    gbc = OneVsRestClassifier(GradientBoostingClassifier())
+    knn = OneVsRestClassifier(KNeighborsClassifier())
+
+    # Fit the models
     logreg.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
     mnb.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
-    return [logreg, mnb]
+    svc.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    rf.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    gbc.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    knn.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+
+    # Return a list of trained models
+    return [logreg, mnb, svc, rf, gbc, knn]
 
 
 def get_advice(context, actions_id, experts):
@@ -114,14 +130,14 @@ def policy_generation(bandit, actions, kwargs={}):
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp4p.Exp4P(
-            actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds
+            actions_storage, historystorage, modelstorage, p_min=None, max_rounds=max_rounds, **kwargs
         )
 
     if bandit == "Exp4PNN":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
         policy = exp4pnn.Exp4PNN(
-            actions_storage, historystorage, modelstorage, delta=0.5, p_min=None, max_rounds=max_rounds
+            actions_storage, historystorage, modelstorage, p_min=None, max_rounds=max_rounds, **kwargs
         )
 
     elif bandit == "LinUCB":
@@ -138,7 +154,7 @@ def policy_generation(bandit, actions, kwargs={}):
     elif bandit == "Exp3":
         actions_storage = MemoryActionStorage()
         actions_storage.add(actions)
-        policy = exp3.Exp3(historystorage, modelstorage, actions_storage, gamma=0.3)
+        policy = exp3.Exp3(historystorage, modelstorage, actions_storage, **kwargs)
 
     elif bandit == "Exp3NN":
         actions_storage = MemoryActionStorage()
@@ -158,11 +174,11 @@ def policy_generation(bandit, actions, kwargs={}):
     elif bandit == "random":
         policy = 0
 
-    return policy
+    return policy, modelstorage
 
 
 def policy_evaluation(
-    policy, bandit, streaming_batch, user_feature, reward_list, actions, action_context=None
+    policy, bandit, streaming_batch, user_feature, reward_list, actions, action_context=None, num_advisors=None
 ):
     times = len(streaming_batch)
     seq_error = np.zeros(shape=(times, 1))
@@ -193,11 +209,14 @@ def policy_evaluation(
             pbar.update(1)  # Manually update the progress bar by 1
 
     elif bandit in ["Exp4P", "Exp4PNN"]:
+        experts = train_expert(action_context)
+        assert num_advisors is not None and len(experts) >- num_advisors, "Number of advisors must be specified and less than the number of experts"
+        experts = experts[:num_advisors]
         for t in range(1, times):
             feature = user_feature[user_feature.index == int(streaming_batch.iloc[t, 0])]
             if not len(feature):
                 print(f"No feature for user {int(streaming_batch.iloc[t, 0])}")
-            experts = train_expert(action_context)
+
             advice = {}
             for i in range(len(experts)):
                 prob = experts[i].predict_proba(feature)[0]
@@ -260,15 +279,18 @@ def run_single_trial(
     policy_bandit_kwargs = bandit_kwargs.copy()
     del policy_bandit_kwargs["seed"]
 
-    policy = policy_generation(bandit, actions, policy_bandit_kwargs)
+    num_advisors=None
+    policy, model_storage = policy_generation(bandit, actions, policy_bandit_kwargs)
+    if bandit in ["Exp4P", "Exp4PNN"] and 'num_advisors' in policy_bandit_kwargs:
+        num_advisors = policy_bandit_kwargs['num_advisors']
+
     seq_error = policy_evaluation(
-        policy, bandit, streaming_batch_small, user_feature, reward_list, actions, action_context
+        policy, bandit, streaming_batch_small, user_feature, reward_list, actions, action_context, num_advisors
     )
     bandit_regret = regret_calculation(seq_error)
-
-    label = get_label(bandit, bandit_kwargs)
     bandit_regret = [val[0] for val in bandit_regret]
-    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret}
+    model_storage.get_model()['w'] = model_storage.get_model()['w'].tolist()
+    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret, 'model_storage': model_storage.get_model()}
     result_json_path = get_result_path(bandit, bandit_kwargs, regrets_dir_path)
     with open(result_json_path, "w") as f:
         json.dump(result, f, indent=4)
@@ -293,7 +315,7 @@ def main():
     os.makedirs(regrets_dir_path, exist_ok=True)
 
     bandits = [config for config in trials_config if config["name"] == "bandit"][0]['values']
-    bandits = ['Exp3NNDist']
+    bandits = ["Exp3"]
     for bandit in bandits:
         bandit_trials_kwargs = get_bandit_trials_kwargs(bandit, trials_config, hyper_params)
         for idx, bandit_kwargs in enumerate(bandit_trials_kwargs):
