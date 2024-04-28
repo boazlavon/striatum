@@ -42,6 +42,11 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import AdaBoostClassifier, ExtraTreesClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.multiclass import OneVsRestClassifier
+
 
 from movielens_preprocess import DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR
 from collections import OrderedDict
@@ -97,6 +102,10 @@ def train_expert(action_context):
     rf = OneVsRestClassifier(RandomForestClassifier())
     gbc = OneVsRestClassifier(GradientBoostingClassifier())
     knn = OneVsRestClassifier(KNeighborsClassifier())
+    adb = OneVsRestClassifier(AdaBoostClassifier())
+    dt = OneVsRestClassifier(DecisionTreeClassifier())
+    et = OneVsRestClassifier(ExtraTreesClassifier())
+    mlp = OneVsRestClassifier(MLPClassifier(max_iter=1000))
 
     # Fit the models
     logreg.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
@@ -105,9 +114,13 @@ def train_expert(action_context):
     rf.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
     gbc.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
     knn.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    adb.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    dt.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    et.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
+    mlp.fit(action_context.iloc[:, 2:], action_context.iloc[:, 0])
 
     # Return a list of trained models
-    return [logreg, mnb, svc, rf, gbc, knn]
+    return [logreg, mnb, svc, rf, gbc, knn, adb, dt, et, mlp]
 
 
 def get_advice(context, actions_id, experts):
@@ -182,6 +195,7 @@ def policy_evaluation(
 ):
     times = len(streaming_batch)
     seq_error = np.zeros(shape=(times, 1))
+    model_storage_over_time = []
     actions_id = [actions[i].action_id for i in range(len(actions))]
     print()
     pbar = tqdm(total=times)
@@ -205,6 +219,19 @@ def policy_evaluation(
                 policy.reward(history_id, {action[0].action.action_id: 1.0})
                 if t > 0:
                     seq_error[t] = seq_error[t - 1]
+            
+            result_dict = []
+            model_storage_dict = policy._model_storage.get_model()
+            if model_storage_dict is not None:
+                result_dict = model_storage_dict.copy()
+                for key, value in model_storage_dict.items():
+                    try:
+                        result_dict[key] = value.tolist()
+                    except:
+                        pass
+            else:
+                print("Warning: model storage is empty") 
+            model_storage_over_time.append(result_dict)
             #print(f"regret={seq_error[t] / (1.0 * t)} | t={t}/{times}")
             pbar.update(1)  # Manually update the progress bar by 1
 
@@ -240,6 +267,18 @@ def policy_evaluation(
                 if t > 1:
                     seq_error[t] = seq_error[t - 1]
             #print(f"regret={seq_error[t] / (1.0 * t)} | t={t}/{times}")
+            result_dict = []
+            model_storage_dict = policy._model_storage.get_model()
+            if model_storage_dict is not None:
+                result_dict = model_storage_dict.copy()
+                for key, value in model_storage_dict.items():
+                    try:
+                        result_dict[key] = value.tolist()
+                    except:
+                        pass
+            else:
+                print("Warning: model storage is empty") 
+            model_storage_over_time.append(result_dict)
             pbar.update(1)  # Manually update the progress bar by 1
 
     elif bandit == "random":
@@ -257,7 +296,7 @@ def policy_evaluation(
                 if t > 0:
                     seq_error[t] = seq_error[t - 1]
     pbar.close()  # Close the progress bar after the loop is done
-    return seq_error
+    return seq_error, model_storage_over_time
 
 
 def regret_calculation(seq_error):
@@ -284,29 +323,17 @@ def run_single_trial(
     if bandit in ["Exp4P", "Exp4PNN"] and 'num_advisors' in policy_bandit_kwargs:
         num_advisors = policy_bandit_kwargs['num_advisors']
 
-    seq_error = policy_evaluation(
+    seq_error, model_storage_over_time = policy_evaluation(
         policy, bandit, streaming_batch_small, user_feature, reward_list, actions, action_context, num_advisors
     )
     bandit_regret = regret_calculation(seq_error)
     bandit_regret = [val[0] for val in bandit_regret]
 
-    result_dict = []
-    model_storage_dict = model_storage.get_model()
-    if model_storage_dict is not None:
-        result_dict = model_storage_dict.copy()
-        for key, value in model_storage_dict.items():
-            try:
-                result_dict[key] = value.tolist()
-            except:
-                pass
-            print(key, result_dict[key])
-    else:
-        print("Warning: model storage is empty")
-    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret, 'model_storage': result_dict}
+    result = {"bandit": bandit, "kwargs": bandit_kwargs, "regret": bandit_regret, 'model_storage': model_storage_over_time}
     result_json_path = get_result_path(bandit, bandit_kwargs, regrets_dir_path)
     with open(result_json_path, "w") as f:
         json.dump(result, f, indent=4)
-    print(f"Saved results to {result_json_path}")
+    print(f"Saved results to {result_json_path} (r={bandit_regret[-1]})")
 
 def main():
     streaming_batch, user_feature, actions, reward_list, action_context = get_data()

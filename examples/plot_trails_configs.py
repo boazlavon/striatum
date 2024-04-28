@@ -82,6 +82,7 @@ def plot_trails(plot_trials_config_path, hyper_params_path):
             result_json_path = get_result_path(bandit, bandit_kwargs, regrets_dir_path)
             if not os.path.exists(result_json_path):
                 print(f"Skipping bandit {bandit} with kwargs {bandit_kwargs}")
+                continue
             
             result = None
             with open(result_json_path, "r") as f:
