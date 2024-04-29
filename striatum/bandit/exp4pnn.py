@@ -110,13 +110,13 @@ class Exp4PNN(BaseBandit):
 
         self.use_nn_outer_update = use_nn_outer_update
         self.outer_nn_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
-        self.outer_nn_update_optimizer = optim.AdamW(self.inner_nn_update_model.parameters(), lr=lr)
-        
+        self.outer_nn_update_optimizer = optim.AdamW(self.outer_nn_update_model.parameters(), lr=lr)
+
         self.use_exp4p_update = use_exp4p_update
 
-        print("use_exp4p_update", self.use_exp4p_update)
-        print("use_nn_inner_update", self.use_nn_inner_update)
-        print("use_nn_outer_update", self.use_nn_outer_update)
+        #print("use_exp4p_update", self.use_exp4p_update)
+        #print("use_nn_inner_update", self.use_nn_inner_update)
+        #print("use_nn_outer_update", self.use_nn_outer_update)
 
         # delta > 0
         if not isinstance(delta, float):
@@ -262,7 +262,7 @@ class Exp4PNN(BaseBandit):
         n_advisors = torch.tensor(n_advisors, dtype=torch.float).to(self.device)
         for action_id, reward in six.viewitems(rewards):
             if self.use_exp4p_update:
-                print("use_exp4p_update")
+                #print("use_exp4p_update")
                 y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs[
                     action_index[action_id]
                 ]
@@ -274,12 +274,13 @@ class Exp4PNN(BaseBandit):
                     / 2
                     * (
                         y_hat
-                        + v_hat * torch.sqrt(torch.log(n_advisors / self.delta) / (n_actions * self.max_rounds))
+                        + v_hat
+                        * torch.sqrt(torch.log(n_advisors / self.delta) / (n_actions * self.max_rounds))
                     )
                 )
-
+                #print(f"exp4: {updates=}")
                 if self.use_nn_inner_update:
-                    print("use_nn_inner_update")
+                    #print("use_nn_inner_update")
                     self.inner_nn_update_optimizer.zero_grad()
                     train_nn_updates = updates.clone().detach().to(self.device)
                     w_out = w.clone().detach().to(self.device)
@@ -295,14 +296,16 @@ class Exp4PNN(BaseBandit):
                     self.inner_nn_update_optimizer.step()
 
                     updates = self.inner_nn_update_model(updates)
+                    #print(f"inner: {updates=}")
 
                 # exp4 update
                 w = w * torch.exp(updates)
                 w = w / torch.sum(w)
                 w = w.detach()
+                #print(f"{w=}")
 
             if self.use_nn_outer_update:
-                print("use_nn_outer_update")
+                #print("use_nn_outer_update")
                 self.outer_nn_update_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
                 train_nn_updates = self.outer_nn_update_model(w_input)
@@ -317,9 +320,13 @@ class Exp4PNN(BaseBandit):
                 # the input is w after the exp4 update
                 neural_updates = self.outer_nn_update_model(w_input)
                 neural_updates = torch.exp(neural_updates)
+
                 w = w * torch.exp(neural_updates)
                 w = w / torch.sum(w)
                 w = w.detach()
+
+                #print(f"outer: {neural_updates=}")
+                #print(f"{w=}")
 
         # self._history_storage.add_reward(history_id, rewards)
         self._model_storage.save_model({"action_probs": action_probs, "w": w})
@@ -358,74 +365,9 @@ class Exp4PInnerNNUpdate(Exp4PNN):
             max_rounds,
             hidden_sizes,
             dropout_prob,
-            lr
+            lr,
         )
 
-class Exp4PInnerNNUpdate(Exp4PNN):
-    def __init__(
-        self,
-        actions,
-        historystorage,
-        modelstorage,
-        num_advisors=2,
-        delta=0.1,
-        p_min=None,
-        max_rounds=10000,
-        hidden_sizes=None,
-        dropout_prob=0.5,
-        lr=1e-3,
-    ):
-        use_nn_inner_update = True
-        use_nn_outer_update = True
-        use_exp4p_update = True
-        super(Exp4PInnerNNUpdate, self).__init__(
-            actions,
-            historystorage,
-            modelstorage,
-            use_nn_inner_update,
-            use_nn_outer_update,
-            use_exp4p_update,
-            num_advisors,
-            delta,
-            p_min,
-            max_rounds,
-            hidden_sizes,
-            dropout_prob,
-            lr
-        )
-
-class Exp4POuterNNUpdate(Exp4PNN):
-    def __init__(
-        self,
-        actions,
-        historystorage,
-        modelstorage,
-        num_advisors=2,
-        delta=0.1,
-        p_min=None,
-        max_rounds=10000,
-        hidden_sizes=None,
-        dropout_prob=0.5,
-        lr=1e-3,
-    ):
-        use_nn_inner_update = False
-        use_nn_outer_update = True
-        use_exp4p_update = True
-        super(Exp4POuterNNUpdate, self).__init__(
-            actions,
-            historystorage,
-            modelstorage,
-            use_nn_inner_update,
-            use_nn_outer_update,
-            use_exp4p_update,
-            num_advisors,
-            delta,
-            p_min,
-            max_rounds,
-            hidden_sizes,
-            dropout_prob,
-            lr
-        )
 
 class Exp4PInnerOuterNNUpdate(Exp4PNN):
     def __init__(
@@ -457,8 +399,43 @@ class Exp4PInnerOuterNNUpdate(Exp4PNN):
             max_rounds,
             hidden_sizes,
             dropout_prob,
-            lr
+            lr,
         )
+
+
+class Exp4POuterNNUpdate(Exp4PNN):
+    def __init__(
+        self,
+        actions,
+        historystorage,
+        modelstorage,
+        num_advisors=2,
+        delta=0.1,
+        p_min=None,
+        max_rounds=10000,
+        hidden_sizes=None,
+        dropout_prob=0.5,
+        lr=1e-3,
+    ):
+        use_nn_inner_update = False
+        use_nn_outer_update = True
+        use_exp4p_update = True
+        super(Exp4POuterNNUpdate, self).__init__(
+            actions,
+            historystorage,
+            modelstorage,
+            use_nn_inner_update,
+            use_nn_outer_update,
+            use_exp4p_update,
+            num_advisors,
+            delta,
+            p_min,
+            max_rounds,
+            hidden_sizes,
+            dropout_prob,
+            lr,
+        )
+
 
 class OuterNNUpdateExperts(Exp4PNN):
     def __init__(
@@ -490,5 +467,5 @@ class OuterNNUpdateExperts(Exp4PNN):
             max_rounds,
             hidden_sizes,
             dropout_prob,
-            lr
+            lr,
         )

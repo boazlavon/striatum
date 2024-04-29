@@ -20,7 +20,11 @@ LOGGER = logging.getLogger(__name__)
 
 class NeuralNetwork(nn.Module):
     def __init__(
-        self, layers_dims, dropout_prob=0.5, init_p_factor_raw_weight=2.8, init_exp3_factor_raw_weight=0
+        self,
+        layers_dims,
+        dropout_prob=0.5,
+        init_scale_factor_raw_weight=2.8,
+        inner_update_factor_raw_weight=0,
     ):
         super(NeuralNetwork, self).__init__()
         self.layers = nn.ModuleList()  # Use ModuleList to properly register the layers
@@ -31,31 +35,30 @@ class NeuralNetwork(nn.Module):
                 self.layers.append(nn.Dropout(dropout_prob))
                 self.layers.append(nn.ReLU())
 
-        # Add a learnable residual weight for the final layer
-        self.p_factor_raw_weight = nn.Parameter(
-            torch.tensor(init_p_factor_raw_weight, dtype=torch.float64)
-        )  # Use only the residual first
-        self.p_factor = 0.5 * (torch.tanh(self.p_factor_raw_weight) + 1)
+        self.scale_factor_raw_weight = nn.Parameter(
+            torch.tensor(init_scale_factor_raw_weight, dtype=torch.float64)
+        )
+        self.scale_factor = 0.5 * (torch.tanh(self.scale_factor_raw_weight) + 1)
 
-        self.exp3_factor_raw_weight = nn.Parameter(
-            torch.tensor(init_exp3_factor_raw_weight, dtype=torch.float64)
-        )  # Use only the residual first
-        self.exp3_factor = 0.5 * (torch.tanh(self.exp3_factor_raw_weight) + 1)
+        self.inner_update_factor_raw_weight = nn.Parameter(
+            torch.tensor(inner_update_factor_raw_weight, dtype=torch.float64)
+        )
+        self.inner_update_factor = 0.5 * (torch.tanh(self.inner_update_factor_raw_weight) + 1)
 
-    def forward(self, x, exp3_update=None):
-        if exp3_update is not None:
-            x = torch.cat((x, torch.tensor([exp3_update])), dim=0)
+    def forward(self, x, exp3_inner_update=None):
+        if exp3_inner_update is not None:
+            x = torch.cat((x, torch.tensor([exp3_inner_update])), dim=0)
         for layer in self.layers:
             x = layer(x)
 
         # Apply the single learnable residual connection before the final output
         # Using the original input, scaled by a learnable parameter
         x = F.softmax(x, dim=0)
-        self.p_factor = 0.5 * (torch.tanh(self.p_factor_raw_weight) + 1)
-        x = x * self.p_factor
+        self.scale_factor = 0.5 * (torch.tanh(self.scale_factor_raw_weight) + 1)
+        x = x * self.scale_factor
 
-        if exp3_update is not None:
-            x = x + self.exp3_factor * exp3_update
+        if exp3_inner_update is not None:
+            x = x + self.inner_update_factor * exp3_inner_update
         return x
 
 
@@ -130,7 +133,7 @@ class Exp3NN(BaseBandit):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         w = torch.ones(self.n_actions).to(self.device)
         self._model_storage.save_model({"w": w})
-        
+
         assert hidden_sizes is not None, "hidden_sizes should not be None"
         layers = [self.n_actions] + hidden_sizes + [self.n_actions]
         print(self.device)
@@ -140,8 +143,8 @@ class Exp3NN(BaseBandit):
         self.nn_dist_model = NeuralNetwork(layers, dropout_prob).to(self.device)
         self.nn_dist_optimizer = optim.AdamW(self.nn_dist_model.parameters(), lr=lr)
 
-        self.exp3_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
-        self.exp3_update_optimizer = optim.AdamW(self.exp3_update_model.parameters(), lr=lr)
+        self.nn_inner_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
+        self.nn_inner_update_optimizer = optim.AdamW(self.nn_inner_update_model.parameters(), lr=lr)
 
     def _exp3_probs(self, w, gamma):
         """Exp3 algorithm."""
@@ -221,7 +224,7 @@ class Exp3NN(BaseBandit):
         # Update the model
         for action_id, reward in rewards.items():
             if self.use_exp3_updates:
-                print("use_exp3_updates")
+                #print("use_exp3_updates")
                 updates = self.gamma * (reward / probs[self.action_index[action_id]]) / n_actions
                 updates = torch.exp(updates)
                 updates = updates.to(self.device)
@@ -229,7 +232,7 @@ class Exp3NN(BaseBandit):
                 w[self.action_index[action_id]] = w[self.action_index[action_id]] * updates
 
             if self.use_nn_outer_update:
-                print("use_nn_outer_update")
+                #print("use_nn_outer_update")
                 self.nn_outer_update_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
                 train_neural_updates = self.nn_outer_update_model(w_input)
@@ -248,8 +251,8 @@ class Exp3NN(BaseBandit):
                 w[self.action_index[action_id]] = w[self.action_index[action_id]] * neural_updates
 
             # neural agent
-            if self.use_nn_dist: 
-                print("use_nn_dist")
+            if self.use_nn_dist:
+                #print("use_nn_dist")
                 self.nn_dist_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
                 w_out = self.nn_outer_update_model(w_input)
@@ -269,19 +272,19 @@ class Exp3NN(BaseBandit):
                 # print(f"exp3 updates: {torch.exp(exp3_updates)}")
                 # w[self.action_index[action_id]] = w[self.action_index[action_id]] * exp3_updates
 
-                self.exp3_update_optimizer.zero_grad()
+                self.nn_inner_update_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
-                train_neural_updates = self.exp3_update_model(w_input, exp3_updates.clone().detach())
+                train_neural_updates = self.nn_inner_update_model(w_input, exp3_updates.clone().detach())
                 w_out = w_input * torch.exp(train_neural_updates)
                 w_out = w_out / torch.sum(w_out)
                 train_probs = self._exp3_probs(w_out, self.gamma)
                 p = train_probs[self.action_index[action_id]]
                 loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
                 loss.backward(retain_graph=True)
-                self.exp3_update_optimizer.step()
+                self.nn_inner_update_optimizer.step()
 
                 with torch.no_grad():
-                    neural_updates = self.exp3_update_model(w_input, exp3_updates.clone().detach())
+                    neural_updates = self.nn_inner_update_model(w_input, exp3_updates.clone().detach())
                     neural_updates = torch.exp(neural_updates)
                     neural_updates = neural_updates[self.action_index[action_id]]
                     neural_updates = neural_updates.detach()
@@ -359,6 +362,7 @@ class Exp3OuterNNUpdate(Exp3NN):
             recommendation_cls,
             random_state,
         )
+
 
 class OuterNNUpdate(Exp3NN):
     def __init__(
