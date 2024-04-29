@@ -42,7 +42,6 @@ def plot_trails(plot_trials_config_path, hyper_params_path):
     with open(hyper_params_path, "r") as f1:
         hyper_params = json.load(f1)
 
-    col = ["b", "g", "r", "c", "m", "y", "k", "w"]
     results_dir_path = os.path.join("results")
     regrets_dir_path = os.path.join(results_dir_path, "results_jsons")
 
@@ -70,7 +69,7 @@ def plot_trails(plot_trials_config_path, hyper_params_path):
         label = get_label(bandit, bandit_kwargs)
         label = f"{bandit}_{i}"
         print(f"[{i}] Plotting bandit {bandit} (r={bandit_regret[-1]}) with kwargs {bandit_kwargs} ")
-        plt.plot(range(len(bandit_regret)), bandit_regret, c=col[i % len(col)], ls="-", label=label)
+        plt.plot(range(len(bandit_regret)), bandit_regret, ls="-", label=label)
         i -= 1
 
     # set plot

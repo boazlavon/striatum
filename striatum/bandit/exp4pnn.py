@@ -114,6 +114,7 @@ class Exp4PNN(BaseBandit):
         
         self.use_exp4p_update = use_exp4p_update
 
+        print("use_exp4p_update", self.use_exp4p_update)
         print("use_nn_inner_update", self.use_nn_inner_update)
         print("use_nn_outer_update", self.use_nn_outer_update)
 
@@ -343,6 +344,39 @@ class Exp4PInnerNNUpdate(Exp4PNN):
     ):
         use_nn_inner_update = True
         use_nn_outer_update = False
+        use_exp4p_update = True
+        super(Exp4PInnerNNUpdate, self).__init__(
+            actions,
+            historystorage,
+            modelstorage,
+            use_nn_inner_update,
+            use_nn_outer_update,
+            use_exp4p_update,
+            num_advisors,
+            delta,
+            p_min,
+            max_rounds,
+            hidden_sizes,
+            dropout_prob,
+            lr
+        )
+
+class Exp4PInnerNNUpdate(Exp4PNN):
+    def __init__(
+        self,
+        actions,
+        historystorage,
+        modelstorage,
+        num_advisors=2,
+        delta=0.1,
+        p_min=None,
+        max_rounds=10000,
+        hidden_sizes=None,
+        dropout_prob=0.5,
+        lr=1e-3,
+    ):
+        use_nn_inner_update = True
+        use_nn_outer_update = True
         use_exp4p_update = True
         super(Exp4PInnerNNUpdate, self).__init__(
             actions,
