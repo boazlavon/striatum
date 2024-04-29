@@ -75,7 +75,7 @@ class Exp4PNN(BaseBandit):
         delta=0.1,
         p_min=None,
         max_rounds=10000,
-        hidden_sizes=[64, 128],
+        hidden_sizes=None,
         dropout_prob=0.5,
         lr=1e-3,
     ):
@@ -90,6 +90,7 @@ class Exp4PNN(BaseBandit):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         #print(self.device)
 
+        assert hidden_sizes is not None, "hidden_sizes should not be None"
         layers = [self.num_advisors] + hidden_sizes + [self.num_advisors]
         self.model = NeuralNetwork(layers, dropout_prob).to(self.device)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=lr)
@@ -121,12 +122,12 @@ class Exp4PNN(BaseBandit):
 
     def _calculate_action_probs(self, context, w):
         # Convert context to a structured numpy array for vectorized operations
-        advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long)
+        advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long).to(self.device)
         n_advisors = len(advisor_ids)
         n_actions = len(self.action_ids)
 
         # Fill the context matrix and reward vector
-        context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float)
+        context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float).to(self.device)
         action_index = {aid: idx for idx, aid in enumerate(self.action_ids)}
         for advisor_idx, actions in context.items():
             for action, value in actions.items():
@@ -142,13 +143,13 @@ class Exp4PNN(BaseBandit):
 
     def _Exp4PNN_score(self, context):
         # Convert context to a structured numpy array for vectorized operations
-        advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long)
+        advisor_ids = torch.tensor(list(context.keys()), dtype=torch.long).to(self.device)
         n_advisors = len(advisor_ids)
 
         # Get or initialize weights
-        w = self._model_storage.get_model().get("w", torch.ones(n_advisors))
+        w = self._model_storage.get_model().get("w", torch.ones(n_advisors).to(self.device))
         if w is None:
-            w = torch.ones(n_advisors)
+            w = torch.ones(n_advisors).to(self.device)
 
         action_probs = self._calculate_action_probs(context, w)
 
@@ -226,7 +227,7 @@ class Exp4PNN(BaseBandit):
         # Prepare arrays from the context and rewards
         n_actions = len(self.action_ids)
         n_advisors = len(context)
-        context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float)
+        context_matrix = torch.zeros((n_advisors, n_actions), dtype=torch.float).to(self.device)
         action_index = {aid: idx for idx, aid in enumerate(self.action_ids)}
 
         # Fill the context matrix and reward vector
@@ -235,7 +236,7 @@ class Exp4PNN(BaseBandit):
                 context_matrix[advisor_idx, action_index[action]] = value
 
         # Calculate y_hat and v_hat using vectorized operations
-        n_advisors = torch.tensor(n_advisors, dtype=torch.float)
+        n_advisors = torch.tensor(n_advisors, dtype=torch.float).to(self.device)
         for action_id, reward in six.viewitems(rewards):
             y_hat = (context_matrix[:, action_index[action_id]] * reward) / action_probs[
                 action_index[action_id]
@@ -252,6 +253,7 @@ class Exp4PNN(BaseBandit):
                 )
             )
             self.optimizer.zero_grad()
+            updates = updates.to(self.device)
             updates = self.model(updates)
             w = w * updates
             w = w / torch.sum(w)
