@@ -101,7 +101,7 @@ class Exp3NN(BaseBandit):
         use_nn_probs=False,
         use_exp3_nn_updates=False,
         gamma=0.3,
-        hidden_sizes=[64, 128],
+        hidden_sizes=None,
         dropout_prob=0.5,
         lr=1e-2,
         recommendation_cls=None,
@@ -127,11 +127,12 @@ class Exp3NN(BaseBandit):
             self.gamma = gamma
 
         # Initialize the model storage
-        w = torch.ones(self.n_actions)
-        self._model_storage.save_model({"w": w})
-
-        layers = [self.n_actions] + hidden_sizes + [self.n_actions]
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        w = torch.ones(self.n_actions).to(self.device)
+        self._model_storage.save_model({"w": w})
+        
+        assert hidden_sizes is not None, "hidden_sizes should not be None"
+        layers = [self.n_actions] + hidden_sizes + [self.n_actions]
         print(self.device)
         self.neural_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
         self.neural_update_optimizer = optim.AdamW(self.neural_update_model.parameters(), lr=lr)
@@ -146,6 +147,7 @@ class Exp3NN(BaseBandit):
         """Exp3 algorithm."""
         w_sum = torch.sum(w)
         probs = (1 - gamma) * (w / w_sum) + (gamma / self.n_actions)
+        probs = probs.to(self.device)
         return probs
 
     def get_action(self, context=None, n_actions=1):
@@ -221,6 +223,7 @@ class Exp3NN(BaseBandit):
             if self.use_exp3:
                 updates = self.gamma * (reward / probs[self.action_index[action_id]]) / n_actions
                 updates = torch.exp(updates)
+                updates = updates.to(self.device)
                 # print(f"exp3 updates: {updates}")
                 w[self.action_index[action_id]] = w[self.action_index[action_id]] * updates
 
