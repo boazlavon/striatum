@@ -96,10 +96,10 @@ class Exp3NN(BaseBandit):
         history_storage,
         model_storage,
         action_storage,
-        use_exp3=True,
-        use_nn_update=False,
-        use_nn_probs=False,
-        use_exp3_nn_updates=False,
+        use_exp3_updates,
+        use_nn_outer_update,
+        use_nn_dist,
+        use_inner_nn_updates,
         gamma=0.3,
         hidden_sizes=None,
         dropout_prob=0.5,
@@ -113,10 +113,10 @@ class Exp3NN(BaseBandit):
         self.action_ids.sort()
         self.action_index = {action_id: idx for idx, action_id in enumerate(self.action_ids)}
         self.n_actions = len(self.action_ids)
-        self.use_exp3 = use_exp3
-        self.use_nn_update = use_nn_update
-        self.use_nn_probs = use_nn_probs
-        self.use_exp3_nn_updates = use_exp3_nn_updates
+        self.use_exp3_updates = use_exp3_updates
+        self.use_nn_outer_update = use_nn_outer_update
+        self.use_nn_dist = use_nn_dist
+        self.use_inner_nn_updates = use_inner_nn_updates
 
         # gamma in (0,1]
         if not isinstance(gamma, float):
@@ -134,11 +134,11 @@ class Exp3NN(BaseBandit):
         assert hidden_sizes is not None, "hidden_sizes should not be None"
         layers = [self.n_actions] + hidden_sizes + [self.n_actions]
         print(self.device)
-        self.neural_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
-        self.neural_update_optimizer = optim.AdamW(self.neural_update_model.parameters(), lr=lr)
+        self.nn_outer_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
+        self.nn_outer_update_optimizer = optim.AdamW(self.nn_outer_update_model.parameters(), lr=lr)
 
-        self.neural_probs_model = NeuralNetwork(layers, dropout_prob).to(self.device)
-        self.neural_probs_optimizer = optim.AdamW(self.neural_probs_model.parameters(), lr=lr)
+        self.nn_dist_model = NeuralNetwork(layers, dropout_prob).to(self.device)
+        self.nn_dist_optimizer = optim.AdamW(self.nn_dist_model.parameters(), lr=lr)
 
         self.exp3_update_model = NeuralNetwork(layers, dropout_prob).to(self.device)
         self.exp3_update_optimizer = optim.AdamW(self.exp3_update_model.parameters(), lr=lr)
@@ -220,45 +220,50 @@ class Exp3NN(BaseBandit):
 
         # Update the model
         for action_id, reward in rewards.items():
-            if self.use_exp3:
+            if self.use_exp3_updates:
+                print("use_exp3_updates")
                 updates = self.gamma * (reward / probs[self.action_index[action_id]]) / n_actions
                 updates = torch.exp(updates)
                 updates = updates.to(self.device)
                 # print(f"exp3 updates: {updates}")
                 w[self.action_index[action_id]] = w[self.action_index[action_id]] * updates
 
-            if self.use_nn_update:
-                self.neural_update_optimizer.zero_grad()
+            if self.use_nn_outer_update:
+                print("use_nn_outer_update")
+                self.nn_outer_update_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
-                train_neural_updates = self.neural_update_model(w_input)
+                train_neural_updates = self.nn_outer_update_model(w_input)
                 w_out = w_input * torch.exp(train_neural_updates)
                 w_out = w_out / torch.sum(w_out)
                 train_probs = self._exp3_probs(w_out, self.gamma)
                 p = train_probs[self.action_index[action_id]]
                 loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
                 loss.backward()
-                self.neural_update_optimizer.step()
+                self.nn_outer_update_optimizer.step()
 
-                neural_updates = self.neural_update_model(w_input)
+                neural_updates = self.nn_outer_update_model(w_input)
                 neural_updates = torch.exp(neural_updates)
                 neural_updates = neural_updates[self.action_index[action_id]]
                 # print(f"neural updates: {neural_updates}")
                 w[self.action_index[action_id]] = w[self.action_index[action_id]] * neural_updates
 
-            if self.use_nn_probs:
-                self.neural_probs_optimizer.zero_grad()
+            # neural agent
+            if self.use_nn_dist: 
+                print("use_nn_dist")
+                self.nn_dist_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
-                w_out = self.neural_update_model(w_input)
+                w_out = self.nn_outer_update_model(w_input)
                 train_probs = self._exp3_probs(w_out, self.gamma)
                 p = train_probs[self.action_index[action_id]]
                 loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
                 loss.backward()
-                self.neural_probs_optimizer.step()
-                w_out = self.neural_update_model(w_input).detach()
+                self.nn_dist_optimizer.step()
+                w_out = self.nn_outer_update_model(w_input).detach()
                 # print(f"full neural update: {w - w_out}")
                 w = w_out
 
-            if self.use_exp3_nn_updates:
+            # not used
+            if self.use_inner_nn_updates:
                 exp3_updates = self.gamma * (reward / probs[self.action_index[action_id]]) / n_actions
                 # exp3_updates = torch.exp(exp3_updates)
                 # print(f"exp3 updates: {torch.exp(exp3_updates)}")
@@ -322,49 +327,12 @@ class Exp3NN(BaseBandit):
         self._action_storage.remove(action_id)
 
 
-class NeuralUpdateExp3(Exp3NN):
+class Exp3OuterNNUpdate(Exp3NN):
     def __init__(
         self,
         history_storage,
         model_storage,
         action_storage,
-        use_exp3=True,
-        use_nn_update=True,
-        use_nn_probs=False,
-        use_exp3_nn_updates=False,
-        gamma=0.3,
-        hidden_size1=64,
-        hidden_size2=128,
-        dropout_prob=0.5,
-        lr=1e-2,
-        recommendation_cls=None,
-        random_state=None,
-    ):
-        super(Exp3NN, self).__init__(
-            history_storage,
-            model_storage,
-            action_storage,
-            use_exp3,
-            use_nn_update,
-            use_nn_probs,
-            use_exp3_nn_updates,
-            gamma,
-            hidden_size1,
-            hidden_size2,
-            dropout_prob,
-            lr,
-            recommendation_cls,
-            random_state,
-        )
-
-
-class Exp3NNUpdate(Exp3NN):
-    def __init__(
-        self,
-        history_storage,
-        model_storage,
-        action_storage,
-        use_exp3,
         gamma=0.3,
         hidden_sizes=[64, 128],
         dropout_prob=0.5,
@@ -372,17 +340,51 @@ class Exp3NNUpdate(Exp3NN):
         recommendation_cls=None,
         random_state=None,
     ):
-        use_nn_update = True
-        use_nn_probs = False
-        use_exp3_nn_updates = False
-        super(Exp3NNUpdate, self).__init__(
+        use_exp3_updates = True
+        use_nn_outer_update = True
+        use_nn_dist = False
+        use_inner_nn_updates = False
+        super(Exp3OuterNNUpdate, self).__init__(
             history_storage,
             model_storage,
             action_storage,
-            use_exp3,
-            use_nn_update,
-            use_nn_probs,
-            use_exp3_nn_updates,
+            use_exp3_updates,
+            use_nn_outer_update,
+            use_nn_dist,
+            use_inner_nn_updates,
+            gamma,
+            hidden_sizes,
+            dropout_prob,
+            lr,
+            recommendation_cls,
+            random_state,
+        )
+
+class OuterNNUpdate(Exp3NN):
+    def __init__(
+        self,
+        history_storage,
+        model_storage,
+        action_storage,
+        gamma=0.3,
+        hidden_sizes=[64, 128],
+        dropout_prob=0.5,
+        lr=1e-2,
+        recommendation_cls=None,
+        random_state=None,
+    ):
+        use_exp3_updates = False
+        use_nn_outer_update = True
+        use_nn_dist = False
+        use_inner_nn_updates = False
+        super(OuterNNUpdate, self).__init__(
+            history_storage,
+            model_storage,
+            action_storage,
+            use_exp3_updates,
+            use_nn_outer_update,
+            use_nn_dist,
+            use_inner_nn_updates,
             gamma,
             hidden_sizes,
             dropout_prob,
@@ -392,7 +394,7 @@ class Exp3NNUpdate(Exp3NN):
         )
 
 
-class Exp3NNDist(Exp3NN):
+class NeuralAgent(Exp3NN):
     def __init__(
         self,
         history_storage,
@@ -404,19 +406,19 @@ class Exp3NNDist(Exp3NN):
         recommendation_cls=None,
         random_state=None,
     ):
-        use_exp3 = False
-        use_nn_update = False
-        use_nn_probs = True
-        use_exp3_nn_updates = False
+        use_exp3_updates = False
+        use_nn_outer_update = False
+        use_nn_dist = True
+        use_inner_nn_updates = False
         gamma = 1e-5
-        super(Exp3NNDist, self).__init__(
+        super(NeuralAgent, self).__init__(
             history_storage,
             model_storage,
             action_storage,
-            use_exp3,
-            use_nn_update,
-            use_nn_probs,
-            use_exp3_nn_updates,
+            use_exp3_updates,
+            use_nn_outer_update,
+            use_nn_dist,
+            use_inner_nn_updates,
             gamma,
             hidden_sizes,
             dropout_prob,
