@@ -102,7 +102,7 @@ def train_expert(action_context):
     rf = OneVsRestClassifier(RandomForestClassifier())
     gbc = OneVsRestClassifier(GradientBoostingClassifier())
     knn = OneVsRestClassifier(KNeighborsClassifier())
-    adb = OneVsRestClassifier(AdaBoostClassifier())
+    adb = OneVsRestClassifier(AdaBoostClassifier(algorithm='SAMME'))
     dt = OneVsRestClassifier(DecisionTreeClassifier())
     et = OneVsRestClassifier(ExtraTreesClassifier())
     mlp = OneVsRestClassifier(MLPClassifier(max_iter=1000))
