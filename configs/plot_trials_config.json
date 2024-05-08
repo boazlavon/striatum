@@ -3,13 +3,26 @@
         "name": "bandit",
         "values": [
             "Exp3",
-            "Exp3NNUpdate"
+            "Exp3OuterNNUpdate",
+            "OuterNNUpdate",
+            "Exp4P",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate",
+            "OuterNNUpdateExperts",
+            "NeuralAgent"
+        ]
+    },
+    {
+        "name": "max_rounds",
+        "values": [
+            10000
         ]
     },
     {
         "name": "gamma",
         "values": [
-            1e-05,
+            1e-5,
             0.1,
             0.3,
             0.5
@@ -17,7 +30,7 @@
         "bandits": [
             "Exp3",
             "Exp3NN",
-            "Exp3NNUpdate"
+            "Exp3OuterNNUpdate"
         ]
     },
     {
@@ -25,37 +38,36 @@
         "values": [
             [
                 64,
-                128,
-                256
-            ],
-            [
-                64,
                 128
-            ],
-            [
-                64
             ]
         ],
         "bandits": [
             "Exp3NN",
-            "Exp3NNUpdate",
-            "Exp3NNDist",
-            "Exp4PNN"
+            "Exp3OuterNNUpdate",
+            "OuterNNUpdate",
+            "NeuralAgent",
+            "Exp4PNN",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate",
+            "OuterNNUpdateExperts"
         ]
     },
     {
         "name": "dropout_prob",
         "values": [
-            0.0,
-            0.2,
-            0.5,
-            0.8
+            0.2
         ],
         "bandits": [
             "Exp3NN",
-            "Exp3NNUpdate",
-            "Exp3NNDist",
-            "Exp4PNN"
+            "Exp3OuterNNUpdate",
+            "OuterNNUpdate",
+            "NeuralAgent",
+            "Exp4PNN",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate",
+            "OuterNNUpdateExperts"
         ]
     },
     {
@@ -66,45 +78,61 @@
         "bandits": [
             "Exp3",
             "Exp3NN",
-            "Exp3NNUpdate",
-            "Exp3NNDist",
+            "Exp3OuterNNUpdate",
+            "OuterNNUpdate",
+            "NeuralAgent",
             "Exp4P",
             "Exp4PNN",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate",
+            "OuterNNUpdateExperts",
             "random"
         ]
     },
     {
-        "name": "use_exp3",
+        "name": "delta",
         "values": [
-            true,
-            false
+            0.1,
+            0.5
         ],
         "bandits": [
-            "Exp3NNUpdate"
-        ]
-    },
-    {
-        "name": "delta",
-        "values": [0.5],
-        "bandits": [
-            "Exp4PNN", "Exp4P"
+            "Exp4P",
+            "Exp4PNN",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate"
         ]
     },
     {
         "name": "lr",
-        "values": [0.01],
+        "values": [
+            0.0001
+        ],
         "bandits": [
             "Exp3NN",
-            "Exp3NNUpdate",
-            "Exp3NNDist",
-            "Exp4PNN"
+            "Exp3OuterNNUpdate",
+            "OuterNNUpdate",
+            "NeuralAgent",
+            "Exp4PNN",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate",
+            "OuterNNUpdateExperts"
         ]
     },
     {
         "name": "num_advisors",
-        "values": [2],
+        "values": [
+            3,6
+        ],
         "bandits": [
-            "Exp4PNN", "Exp4P"
+            "Exp4P",
+            "Exp4PNN",
+            "Exp4POuterNNUpdate",
+            "Exp4PInnerNNUpdate",
+            "Exp4PInnerOuterNNUpdate",
+            "OuterNNUpdateExperts"
         ]
     }
 ]

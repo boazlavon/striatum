@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import itertools
 from datetime import datetime
 
+PLOT_TIMESTAMP_LIMIT = 10000
 
 def get_bandit_trials_kwargs(bandit, trials_config, hyper_params):
     bandit_trials = {}
@@ -21,10 +22,18 @@ def get_bandit_trials_kwargs(bandit, trials_config, hyper_params):
     # trials_kwargs = [{'bandit': bandit, **trial_kwargs} for trial_kwargs in trials_kwargs]
     return trials_kwargs
 
-
 def get_label(bandit, bandit_kwargs):
     label = bandit
     for key, value in sorted(bandit_kwargs.items()):
+        label += f"_{key}={value}"
+    return label
+
+PLOT_LABAEL_KWARGS = ('gamma', 'delta', 'num_advisors')
+def get_plot_label(bandit, bandit_kwargs):
+    label = bandit
+    for key, value in sorted(bandit_kwargs.items()):
+        if key not in PLOT_LABAEL_KWARGS:
+            continue
         label += f"_{key}={value}"
     return label
 
@@ -66,8 +75,10 @@ def plot_trails(plot_trials_config_path, hyper_params_path):
     results = sorted(results, key=lambda x: x["regret"][-1])[::-1]
     for result in results:
         bandit, bandit_kwargs, bandit_regret = result["bandit"], result["kwargs"], result["regret"]
-        label = get_label(bandit, bandit_kwargs)
-        label = f"{bandit}_{i}"
+        label = get_plot_label(bandit, bandit_kwargs)
+        label = f"{label}_{i}_(r={bandit_regret[-1]})"
+
+        bandit_regret = bandit_regret[:PLOT_TIMESTAMP_LIMIT]
         print(f"[{i}] Plotting bandit {bandit} (r={bandit_regret[-1]}) with kwargs {bandit_kwargs} ")
         plt.plot(range(len(bandit_regret)), bandit_regret, ls="-", label=label)
         i -= 1
