@@ -30,7 +30,8 @@
         "bandits": [
             "Exp3",
             "Exp3NN",
-            "Exp3OuterNNUpdate"
+            "Exp3OuterNNUpdate",
+            "OuterNNUpdate"
         ]
     },
     {
