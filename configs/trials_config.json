@@ -16,13 +16,13 @@
     {
         "name": "max_rounds",
         "values": [
-            1000
+            10000
         ]
     },
     {
         "name": "gamma",
         "values": [
-            1e-05,
+            1e-5,
             0.1,
             0.3,
             0.5
@@ -92,19 +92,23 @@
     },
     {
         "name": "delta",
-        "values": [0.5],
+        "values": [
+            0.1,
+            0.5
+        ],
         "bandits": [
             "Exp4P",
             "Exp4PNN",
             "Exp4POuterNNUpdate",
             "Exp4PInnerNNUpdate",
-            "Exp4PInnerOuterNNUpdate",
-            "OuterNNUpdateExperts"
+            "Exp4PInnerOuterNNUpdate"
         ]
     },
     {
         "name": "lr",
-        "values": [0.0001],
+        "values": [
+            0.0001
+        ],
         "bandits": [
             "Exp3NN",
             "Exp3OuterNNUpdate",
@@ -119,7 +123,9 @@
     },
     {
         "name": "num_advisors",
-        "values": [3],
+        "values": [
+            3,6
+        ],
         "bandits": [
             "Exp4P",
             "Exp4PNN",
