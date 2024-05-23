@@ -10,7 +10,8 @@
             "Exp4PInnerNNUpdate",
             "Exp4PInnerOuterNNUpdate",
             "OuterNNUpdateExperts",
-            "NeuralAgent"
+            "NeuralAgent",
+            "ExpertAgent"
         ]
     },
     {
@@ -88,7 +89,8 @@
             "Exp4PInnerNNUpdate",
             "Exp4PInnerOuterNNUpdate",
             "OuterNNUpdateExperts",
-            "random"
+            "random",
+            "ExpertAgent"
         ]
     },
     {
@@ -125,7 +127,7 @@
     {
         "name": "num_advisors",
         "values": [
-            3,6
+            6
         ],
         "bandits": [
             "Exp4P",
@@ -133,7 +135,18 @@
             "Exp4POuterNNUpdate",
             "Exp4PInnerNNUpdate",
             "Exp4PInnerOuterNNUpdate",
-            "OuterNNUpdateExperts"
+            "OuterNNUpdateExperts",
+            "ExpertAgent"
+        ]
+    },
+    {
+        "name": "use_expert",
+        "values": [
+            0,1,2,3,4,5
+        ],
+        "bandits": [
+            "Exp4PNN",
+            "ExpertAgent"
         ]
     }
 ]
