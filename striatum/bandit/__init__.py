@@ -18,6 +18,7 @@ __all__ = [
     "NeuralAgent",
     "Exp4P",
     "Exp4PNN",
+    "ExpertAgent",
     "Exp4POuterNNUpdate",
     "Exp4PInnerNNUpdate",
     "Exp4PInnerOuterNNUpdate",

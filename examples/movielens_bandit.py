@@ -164,6 +164,12 @@ def policy_generation(bandit, actions, max_rounds, kwargs={}):
         policy = exp4pnn.OuterNNUpdateExperts(
             actions_storage, historystorage, modelstorage, p_min=None, max_rounds=max_rounds, **kwargs
         )
+    if bandit == "ExpertAgent":
+        actions_storage = MemoryActionStorage()
+        actions_storage.add(actions)
+        policy = exp4pnn.ExpertAgent(
+            actions_storage, historystorage, modelstorage, p_min=None, max_rounds=max_rounds, **kwargs
+        )
 
     elif bandit == "LinUCB":
         policy = linucb.LinUCB(actions, historystorage, modelstorage, 0.3, 20)
@@ -268,7 +274,7 @@ def policy_evaluation(
             # print(f"regret={seq_error[t] / (1.0 * t)} | t={t}/{times}")
             pbar.update(1)  # Manually update the progress bar by 1
 
-    elif bandit in ["Exp4P", "Exp4PNN", "Exp4PInnerNNUpdate", "Exp4PInnerOuterNNUpdate", "Exp4POuterNNUpdate", "OuterNNUpdateExperts"]:
+    elif bandit in ["Exp4P", "Exp4PNN", "Exp4PInnerNNUpdate", "Exp4PInnerOuterNNUpdate", "Exp4POuterNNUpdate", "OuterNNUpdateExperts", "ExpertAgent"]:
         experts = train_expert(action_context)
         assert (
             num_advisors is not None and len(experts) > -num_advisors
@@ -358,7 +364,7 @@ def run_single_trial(
     num_advisors = None
     policy = policy_generation(bandit, actions, max_rounds, policy_bandit_kwargs)
     if (
-        bandit in ["Exp4P", "Exp4PNN", "Exp4PInnerNNUpdate", "Exp4PInnerOuterNNUpdate", "Exp4POuterNNUpdate", "OuterNNUpdateExperts"]
+        bandit in ["Exp4P", "Exp4PNN", "Exp4PInnerNNUpdate", "Exp4PInnerOuterNNUpdate", "Exp4POuterNNUpdate", "OuterNNUpdateExperts", "ExpertAgent"]
         and "num_advisors" in policy_bandit_kwargs
     ):
         num_advisors = policy_bandit_kwargs["num_advisors"]

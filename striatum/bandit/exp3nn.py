@@ -255,13 +255,13 @@ class Exp3NN(BaseBandit):
                 #print("use_nn_dist")
                 self.nn_dist_optimizer.zero_grad()
                 w_input = w.clone().detach().to(self.device)
-                w_out = self.nn_outer_update_model(w_input)
+                w_out = self.nn_dist_model(w_input)
                 train_probs = self._exp3_probs(w_out, self.gamma)
                 p = train_probs[self.action_index[action_id]]
                 loss = -1 * (torch.log(p) * reward + torch.log(1 - p) * (1 - reward))
                 loss.backward()
                 self.nn_dist_optimizer.step()
-                w_out = self.nn_outer_update_model(w_input).detach()
+                w_out = self.nn_dist_model(w_input).detach()
                 # print(f"full neural update: {w - w_out}")
                 w = w_out
 
