@@ -5,5 +5,6 @@
     "seed",
     "delta",
     "lr",
-    "num_advisors"
+    "num_advisors",
+    "use_expert"
 ]
